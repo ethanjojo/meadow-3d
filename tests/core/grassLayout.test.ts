@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGrassLayout } from '../../src/core/grassLayout'
+import { createGrassLayout, terrainHeight } from '../../src/core/grassLayout'
 
 describe('createGrassLayout', () => {
   it('is deterministic and keeps blades inside the meadow radius', () => {
@@ -42,5 +42,11 @@ describe('createGrassLayout', () => {
     const layout = createGrassLayout(0, 10, 1)
     expect(layout.offsets).toHaveLength(0)
     expect(layout.scales).toHaveLength(0)
+  })
+
+  it('gives the meadow gentle bounded undulation', () => {
+    expect(terrainHeight(0, 0)).toBeCloseTo(0)
+    expect(terrainHeight(8, -5)).not.toBeCloseTo(0)
+    expect(Math.abs(terrainHeight(100, 100))).toBeLessThanOrEqual(0.24)
   })
 })

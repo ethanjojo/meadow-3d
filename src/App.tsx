@@ -77,7 +77,7 @@ export function App() {
             data-testid="nature-canvas"
             camera={{ position: [0, 1.15, 5.4], fov: 48, near: 0.1, far: 180 }}
             dpr={[1, quality.maxDpr]}
-            shadows={quality.shadowSize > 0}
+            shadows={quality.shadowSize > 0 ? 'percentage' : false}
             gl={{
               antialias: qualityTier !== 'low',
               alpha: false,

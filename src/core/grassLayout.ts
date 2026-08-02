@@ -18,6 +18,14 @@ function createMulberry32(seed: number) {
   }
 }
 
+export function terrainHeight(x: number, z: number) {
+  return (
+    Math.sin(x * 0.09) * 0.13 +
+    Math.sin(z * 0.13) * 0.08 +
+    Math.sin((x + z) * 0.04) * 0.03
+  )
+}
+
 export function createGrassLayout(
   count: number,
   meadowRadius: number,
@@ -38,9 +46,12 @@ export function createGrassLayout(
     const offsetIndex = index * 3
 
     offsets[offsetIndex] = Math.cos(angle) * distance
-    offsets[offsetIndex + 1] = 0
+    offsets[offsetIndex + 1] = terrainHeight(
+      offsets[offsetIndex],
+      offsets[offsetIndex + 2],
+    )
     offsets[offsetIndex + 2] = Math.sin(angle) * distance
-    scales[index] = 0.65 + random() * 0.75
+    scales[index] = 0.65 + random() * 0.55
     phases[index] = random() * Math.PI * 2
     stiffness[index] = 0.15 + random() * 0.8
     yaw[index] = random() * Math.PI * 2

@@ -20,6 +20,8 @@ interface NatureSceneProps {
   onNatureSample?: (snapshot: NatureSnapshot) => void
 }
 
+const DAY_START_OFFSET = DEFAULT_CLOCK.dayDuration * 0.31
+
 export function NatureScene({
   qualityTier,
   reducedMotion,
@@ -28,7 +30,10 @@ export function NatureScene({
   onNatureSample,
 }: NatureSceneProps) {
   const quality = QUALITY_PROFILES[qualityTier]
-  const initialSnapshot = useMemo(() => sampleNatureClock(0, DEFAULT_CLOCK), [])
+  const initialSnapshot = useMemo(
+    () => sampleNatureClock(DAY_START_OFFSET, DEFAULT_CLOCK),
+    [],
+  )
   const snapshotRef = useRef(initialSnapshot)
   const seasonRef = useRef(getSeasonAppearance(initialSnapshot))
   const activeElapsedRef = useRef(0)
@@ -39,7 +44,10 @@ export function NatureScene({
 
     const safeDelta = Math.min(delta, 0.1)
     activeElapsedRef.current += safeDelta
-    const snapshot = sampleNatureClock(activeElapsedRef.current, DEFAULT_CLOCK)
+    const snapshot = sampleNatureClock(
+      activeElapsedRef.current + DAY_START_OFFSET,
+      DEFAULT_CLOCK,
+    )
     snapshotRef.current = snapshot
     seasonRef.current = getSeasonAppearance(snapshot)
     recordFrame?.(delta)

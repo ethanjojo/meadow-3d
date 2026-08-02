@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
   Color,
+  CircleGeometry,
   DoubleSide,
   Float32BufferAttribute,
   InstancedBufferAttribute,
@@ -11,7 +12,7 @@ import {
   Sphere,
   Vector3,
 } from 'three'
-import { createGrassLayout } from '../core/grassLayout'
+import { createGrassLayout, terrainHeight } from '../core/grassLayout'
 import type { NatureSnapshot } from '../core/natureClock'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
@@ -35,14 +36,40 @@ function createBladeGeometry(count: number) {
 
   for (let row = 0; row <= segmentCount; row += 1) {
     const height = row / segmentCount
-    const halfWidth = 0.042 * (1 - height * 0.88)
-    positions.push(-halfWidth, height, 0, halfWidth, height, 0)
-    uvs.push(0, height, 1, height)
+    const halfWidth = Math.max(0.0012, 0.024 * Math.pow(1 - height, 1.35))
+    positions.push(
+      -halfWidth,
+      height,
+      0,
+      halfWidth,
+      height,
+      0,
+      0,
+      height,
+      -halfWidth,
+      0,
+      height,
+      halfWidth,
+    )
+    uvs.push(0, height, 1, height, 0, height, 1, height)
 
     if (row < segmentCount) {
-      const current = row * 2
-      const next = current + 2
-      indices.push(current, current + 1, next, current + 1, next + 1, next)
+      const current = row * 4
+      const next = current + 4
+      indices.push(
+        current,
+        current + 1,
+        next,
+        current + 1,
+        next + 1,
+        next,
+        current + 2,
+        current + 3,
+        next + 2,
+        current + 3,
+        next + 3,
+        next + 2,
+      )
     }
   }
 
@@ -73,6 +100,21 @@ function createBladeGeometry(count: number) {
   )
   geometry.instanceCount = count
   geometry.boundingSphere = new Sphere(new Vector3(0, 0, 0), MEADOW_RADIUS + 3)
+  return geometry
+}
+
+function createGroundGeometry() {
+  const geometry = new CircleGeometry(MEADOW_RADIUS, 128)
+  const positions = geometry.getAttribute('position')
+
+  for (let index = 0; index < positions.count; index += 1) {
+    const x = positions.getX(index)
+    const localY = positions.getY(index)
+    positions.setZ(index, terrainHeight(x, -localY))
+  }
+
+  positions.needsUpdate = true
+  geometry.computeVertexNormals()
   return geometry
 }
 
@@ -107,14 +149,16 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
     () => createBladeGeometry(quality.grassBlades),
     [quality.grassBlades],
   )
+  const groundGeometry = useMemo(createGroundGeometry, [])
   const material = useMemo(createGrassMaterial, [])
 
   useEffect(
     () => () => {
       geometry.dispose()
+      groundGeometry.dispose()
       material.dispose()
     },
-    [geometry, material],
+    [geometry, groundGeometry, material],
   )
 
   useFrame(() => {
@@ -131,14 +175,14 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
     material.uniforms.uDryness.value = season.dryness
     material.uniforms.uSnowCoverage.value = season.snowCoverage
     material.uniforms.uSunColor.value.setRGB(
-      1.1 * daylight,
-      0.92 * daylight,
-      0.68 * daylight,
+      0.82 * daylight,
+      0.72 * daylight,
+      0.54 * daylight,
     )
     material.uniforms.uSkyColor.value.setRGB(
-      0.44 + daylight * 0.34,
-      0.54 + daylight * 0.28,
-      0.64 + daylight * 0.22,
+      0.36 + daylight * 0.27,
+      0.43 + daylight * 0.25,
+      0.5 + daylight * 0.23,
     )
     material.uniforms.uSunDirection.value
       .set(Math.cos(solarAngle), Math.max(0.08, sunHeight), -0.35)
@@ -148,6 +192,9 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
       terrainMaterialRef.current.color
         .copy(season.groundColor)
         .lerp(SNOW_COLOR, season.snowCoverage * 0.82)
+      terrainMaterialRef.current.emissive
+        .copy(terrainMaterialRef.current.color)
+        .multiplyScalar(0.26)
       terrainMaterialRef.current.roughness = 0.95 - season.frost * 0.18
     }
   })
@@ -159,8 +206,14 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
         position-y={-0.025}
         receiveShadow={quality.shadowSize > 0}
       >
-        <circleGeometry args={[MEADOW_RADIUS, 96]} />
-        <meshStandardMaterial ref={terrainMaterialRef} color="#40552b" roughness={0.95} />
+        <primitive object={groundGeometry} attach="geometry" />
+        <meshStandardMaterial
+          ref={terrainMaterialRef}
+          color="#40552b"
+          emissive="#132017"
+          emissiveIntensity={0.65}
+          roughness={0.95}
+        />
       </mesh>
       <mesh
         geometry={geometry}

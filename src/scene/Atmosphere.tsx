@@ -147,9 +147,9 @@ export function Atmosphere({
     const snapshot = snapshotRef.current
     const state = getAtmosphere(snapshot, seasonRef.current)
     const orbitAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
-    const sunX = Math.cos(orbitAngle) * 78
+    const sunX = Math.sin(orbitAngle) * 18
     const sunY = Math.sin(orbitAngle) * 78
-    const sunZ = -28
+    const sunZ = -Math.cos(orbitAngle) * 78
 
     skyMaterial.uniforms.uTopColor.value.copy(state.skyTop)
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)

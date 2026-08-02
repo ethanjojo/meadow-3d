@@ -30,6 +30,7 @@ const particleVertexShader = /* glsl */ `
   void main() {
     vec3 animated = position;
     if (uKind < 0.5) {
+      animated.y = mod(position.y, 3.6) - 0.25;
       animated.x += sin(position.y * 1.7 + uTime * 0.38 + position.z) * (0.18 + uWind * 0.32);
       animated.y += sin(position.x * 0.5 + uTime * 0.62) * 0.22;
     } else if (uKind < 1.5) {
@@ -120,7 +121,7 @@ export function WeatherParticles({
   )
   const materials = useMemo(
     () => [
-      createParticleMaterial(0, '#f3dda0', 3.4),
+      createParticleMaterial(0, '#d8c279', 1.2),
       createParticleMaterial(1, '#a8cce2', 4.6),
       createParticleMaterial(2, '#edf4f2', 5.6),
     ],

@@ -23,10 +23,13 @@ export function getWeatherOpacity(
   const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
   const daylight = smoothstep(-0.05, 0.18, Math.sin(solarAngle))
   const weather = clamp01(snapshot.weatherIntensity)
+  const precipitation = smoothstep(0.76, 0.95, weather)
 
   return {
-    pollen: clamp01(season.pollen * (1 - weather * 0.8) * daylight),
-    rain: clamp01(season.rainBias * weather * 0.82),
-    snow: clamp01(season.snowBias * weather),
+    pollen: clamp01(
+      season.pollen * (1 - precipitation * 0.9) * daylight * 0.045,
+    ),
+    rain: clamp01(season.rainBias * precipitation * 0.82),
+    snow: clamp01(season.snowBias * precipitation),
   }
 }

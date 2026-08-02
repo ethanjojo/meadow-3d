@@ -4,9 +4,13 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    chunkSizeWarningLimit: 1_200,
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
+    exclude: ['tests/e2e/**', '**/node_modules/**', '**/dist/**'],
   },
 })

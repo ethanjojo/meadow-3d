@@ -35,9 +35,9 @@ export function getAtmosphere(
   const starOpacity = 1 - smoothstep(-0.28, 0.04, sunElevation)
 
   const nightTop = new Color('#071423')
-  const dayTop = new Color('#70a9cf')
+  const dayTop = new Color('#286f9f')
   const nightHorizon = new Color('#1b3041')
-  const dayHorizon = new Color('#d5e0c7')
+  const dayHorizon = new Color('#9bbeb5')
   const sunset = new Color('#e7a46e')
   const skyTop = nightTop.lerp(dayTop, daylight)
   const skyHorizon = nightHorizon
