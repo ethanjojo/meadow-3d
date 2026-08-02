@@ -52,6 +52,49 @@ textarea {
   touch-action: none;
 }
 
+.experience-controls {
+  position: absolute;
+  z-index: 2;
+  right: max(var(--space-edge), env(safe-area-inset-right));
+  bottom: max(var(--space-edge), env(safe-area-inset-bottom));
+}
+
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  background: var(--glass);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 16%);
+  backdrop-filter: blur(18px) saturate(125%);
+  cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.sound-toggle:hover {
+  border-color: rgb(255 255 255 / 42%);
+  background: rgb(8 22 20 / 58%);
+  transform: translateY(-1px);
+}
+
+.sound-toggle:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.sound-toggle svg {
+  flex: 0 0 auto;
+}
+
 .static-fallback {
   position: relative;
   width: 100%;
