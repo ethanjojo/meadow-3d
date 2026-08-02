@@ -1,7 +1,8 @@
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useMemo } from 'react'
 import { ACESFilmicToneMapping } from 'three'
-import { selectInitialQuality, QUALITY_PROFILES } from './core/quality'
+import { QUALITY_PROFILES } from './core/quality'
+import { useAdaptiveQuality } from './hooks/useAdaptiveQuality'
 import { usePageVisibility } from './hooks/usePageVisibility'
 import { NatureScene } from './scene/NatureScene'
 import './styles.css'
@@ -13,15 +14,15 @@ export function App() {
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
     [],
   )
-  const qualityTier = useMemo(
-    () =>
-      selectInitialQuality({
-        logicalCores: navigator.hardwareConcurrency || 4,
-        devicePixelRatio: window.devicePixelRatio || 1,
-        reducedMotion,
-      }),
+  const capabilities = useMemo(
+    () => ({
+      logicalCores: navigator.hardwareConcurrency || 4,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      reducedMotion,
+    }),
     [reducedMotion],
   )
+  const { tier: qualityTier, recordFrame } = useAdaptiveQuality(capabilities)
   const quality = QUALITY_PROFILES[qualityTier]
 
   return (
@@ -43,6 +44,7 @@ export function App() {
             qualityTier={qualityTier}
             reducedMotion={reducedMotion}
             visible={visible}
+            recordFrame={recordFrame}
           />
         </Suspense>
       </Canvas>
