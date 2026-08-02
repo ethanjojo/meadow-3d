@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Klidná louka</title>
+  <desc id="desc">Jemně ilustrovaná louka s nízkým sluncem a vzdálenými kopci.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#668da8"/>
+      <stop offset="0.55" stop-color="#b9d7d7"/>
+      <stop offset="1" stop-color="#f0c894"/>
+    </linearGradient>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#68794c"/>
+      <stop offset="1" stop-color="#1e3428"/>
+    </linearGradient>
+    <radialGradient id="sun">
+      <stop offset="0" stop-color="#fff7cf"/>
+      <stop offset="0.45" stop-color="#f7d68d" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#f7d68d" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <circle cx="1150" cy="400" r="165" fill="url(#sun)" filter="url(#soft)"/>
+  <circle cx="1150" cy="400" r="48" fill="#fff1b8" opacity=".9"/>
+  <path d="M0 590 C240 510 410 570 620 535 C850 495 1040 585 1260 520 C1390 480 1500 500 1600 525 V1000 H0Z" fill="#718369" opacity=".72"/>
+  <path d="M0 635 C250 570 430 650 680 590 C930 530 1170 650 1600 565 V1000 H0Z" fill="#526849"/>
+  <path d="M0 660 C320 610 570 695 880 625 C1150 565 1350 650 1600 610 V1000 H0Z" fill="url(#field)"/>
+  <g stroke="#2f4931" stroke-linecap="round" opacity=".72">
+    <path d="M45 1000 Q55 790 35 700 M78 1000 Q68 805 102 675 M135 1000 Q120 770 150 705 M205 1000 Q180 830 225 690 M280 1000 Q310 800 290 660 M360 1000 Q330 780 375 700 M455 1000 Q470 805 445 650 M535 1000 Q510 790 550 680 M625 1000 Q650 815 620 670 M720 1000 Q690 785 740 625 M820 1000 Q845 780 815 675 M900 1000 Q880 805 925 645 M1010 1000 Q1040 775 1015 650 M1110 1000 Q1080 800 1130 675 M1215 1000 Q1240 790 1205 635 M1310 1000 Q1280 820 1335 680 M1430 1000 Q1460 760 1420 640 M1535 1000 Q1510 800 1555 675" stroke-width="13"/>
+  </g>
+  <g stroke="#91a65b" stroke-linecap="round" opacity=".65">
+    <path d="M20 1000 Q-5 850 34 770 M165 1000 Q190 830 175 735 M330 1000 Q355 850 345 725 M500 1000 Q470 860 510 730 M665 1000 Q630 835 680 750 M860 1000 Q825 860 875 715 M1060 1000 Q1030 835 1075 735 M1260 1000 Q1300 850 1275 710 M1480 1000 Q1440 840 1495 730" stroke-width="7"/>
+  </g>
+</svg>

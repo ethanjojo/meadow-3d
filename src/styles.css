@@ -1,0 +1,96 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  font-synthesis: none;
+  --ink: #f4f7ed;
+  --glass: rgb(8 22 20 / 42%);
+  --glass-border: rgb(255 255 255 / 24%);
+  --focus: #f7d782;
+  --radius-control: 999px;
+  --space-edge: clamp(1rem, 2.5vw, 2rem);
+  background: #9fcce5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.experience {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+  background: #9fcce5;
+}
+
+.experience canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.static-fallback {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #8fb8ca;
+}
+
+.static-fallback img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.static-fallback figcaption {
+  position: absolute;
+  right: var(--space-edge);
+  bottom: var(--space-edge);
+  left: var(--space-edge);
+  max-width: 36rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-wrap: balance;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
