@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Color, ShaderMaterial, Vector3 } from 'three'
 import { getCelestialState } from '../../src/core/celestial'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
@@ -11,6 +12,7 @@ import {
   createEnvironmentSnapshot,
   type WeatherPreset,
 } from '../../src/core/simulation'
+import { syncGrassAtmosphereUniforms } from '../../src/scene/grassAtmosphere'
 
 function sampleAtDayPhase(dayPhase: number, weather: WeatherPreset = 'clear') {
   const snapshot = sampleNatureClock(DEFAULT_CLOCK.dayDuration * dayPhase)
@@ -128,5 +130,43 @@ describe('getAtmosphere', () => {
       (source.moonIntensity + target.moonIntensity) / 2,
     )
     expect(Math.hypot(...output.celestial.sun.direction)).toBeCloseTo(1)
+  })
+
+  it('synchronizes complete hemisphere, sun, and moon grass lighting', () => {
+    const atmosphere = sampleAtDayPhase(0.5, 'storm')
+    const material = new ShaderMaterial({
+      uniforms: {
+        uSunDirection: { value: new Vector3() },
+        uMoonDirection: { value: new Vector3() },
+        uSunColor: { value: new Color() },
+        uMoonColor: { value: new Color() },
+        uSkyColor: { value: new Color() },
+        uGroundLightColor: { value: new Color() },
+        uSkyLightIntensity: { value: 0 },
+        uSunIntensity: { value: 0 },
+        uMoonIntensity: { value: 0 },
+        uFogColor: { value: new Color() },
+        uFogDensity: { value: 0 },
+      },
+    })
+
+    syncGrassAtmosphereUniforms(material.uniforms, atmosphere)
+
+    expect(material.uniforms.uSkyColor.value.getHex()).toBe(
+      atmosphere.skyLightColor.getHex(),
+    )
+    expect(material.uniforms.uGroundLightColor.value.getHex()).toBe(
+      atmosphere.groundLightColor.getHex(),
+    )
+    expect(material.uniforms.uSkyLightIntensity.value).toBe(
+      atmosphere.skyLightIntensity,
+    )
+    expect(material.uniforms.uSunColor.value.getHex()).toBe(
+      atmosphere.sunColor.getHex(),
+    )
+    expect(material.uniforms.uSunIntensity.value).toBe(atmosphere.sunIntensity)
+    expect(material.uniforms.uMoonIntensity.value).toBe(
+      atmosphere.moonIntensity,
+    )
   })
 })

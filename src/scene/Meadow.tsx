@@ -197,6 +197,7 @@ function createGrassMaterial(
       uSunColor: { value: new Color('#fff0c0') },
       uMoonColor: { value: new Color('#8ba8cf') },
       uSkyColor: { value: new Color('#adc7d0') },
+      uGroundLightColor: { value: new Color('#40552b') },
       uSunDirection: { value: new Vector3(0.4, 0.8, 0.2).normalize() },
       uMoonDirection: { value: new Vector3(-0.4, 0.8, -0.2).normalize() },
       uFogColor: { value: new Color('#aab8a6') },
@@ -206,6 +207,10 @@ function createGrassMaterial(
       uSnowCoverage: { value: 0 },
       uLayerFade: { value: layerFade },
       uFogDensity: { value: 0.009 },
+      uSkyLightIntensity: { value: 0.7 },
+      uSunIntensity: { value: 1.4 },
+      uMoonIntensity: { value: 0.18 },
+      uStormFlash: { value: 0 },
       uGrassColorAtlas: { value: colorAtlas },
       uGrassSurfaceAtlas: { value: surfaceAtlas },
       uUseAtlas: { value: 0 },
@@ -309,6 +314,7 @@ export function Meadow({
       uniforms.uGustSpeed.value = 1.2 + windStrength * 2.8
       uniforms.uBendLimit.value = bendLimit
       uniforms.uFlutterStrength.value = flutterStrength
+      uniforms.uStormFlash.value = effects.stormFlash
       uniforms.uGrassBase.value.copy(season.grassColor)
       uniforms.uGrassTip.value.copy(season.tipColor)
       uniforms.uDryness.value = season.dryness

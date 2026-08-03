@@ -20,6 +20,7 @@ import { blendWeatherEffects, deriveWeatherEffects } from '../core/weather'
 import { Atmosphere } from './Atmosphere'
 import { FixedCamera } from './FixedCamera'
 import { Meadow } from './Meadow'
+import { PostProcessing } from './PostProcessing'
 import { WeatherParticles } from './WeatherParticles'
 
 interface NatureSceneProps {
@@ -331,6 +332,7 @@ export function NatureScene({
         visible={visible}
       />
       <FixedCamera />
+      {quality.postprocessing ? <PostProcessing quality={quality} /> : null}
     </>
   )
 }

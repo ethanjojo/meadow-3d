@@ -7,15 +7,13 @@ export function syncGrassAtmosphereUniforms(
 ) {
   uniforms.uSunDirection.value.set(...atmosphere.celestial.sun.direction)
   uniforms.uMoonDirection.value.set(...atmosphere.celestial.moon.direction)
-  uniforms.uSunColor.value
-    .copy(atmosphere.sunColor)
-    .multiplyScalar(atmosphere.sunIntensity)
-  uniforms.uMoonColor.value
-    .copy(atmosphere.moonColor)
-    .multiplyScalar(atmosphere.moonIntensity)
-  uniforms.uSkyColor.value
-    .copy(atmosphere.skyLightColor)
-    .multiplyScalar(atmosphere.skyLightIntensity)
+  uniforms.uSunColor.value.copy(atmosphere.sunColor)
+  uniforms.uMoonColor.value.copy(atmosphere.moonColor)
+  uniforms.uSkyColor.value.copy(atmosphere.skyLightColor)
+  uniforms.uGroundLightColor.value.copy(atmosphere.groundLightColor)
+  uniforms.uSkyLightIntensity.value = atmosphere.skyLightIntensity
+  uniforms.uSunIntensity.value = atmosphere.sunIntensity
+  uniforms.uMoonIntensity.value = atmosphere.moonIntensity
   uniforms.uFogColor.value.copy(atmosphere.fogColor)
   uniforms.uFogDensity.value = atmosphere.fogDensity
 }

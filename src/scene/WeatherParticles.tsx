@@ -18,6 +18,7 @@ import {
   deriveRainStreakOrientation,
   type WeatherEffects,
 } from '../core/weather'
+import { getBloomEmissionScale } from './postProcessingShaders'
 
 interface WeatherParticlesProps {
   quality: QualityProfile
@@ -124,6 +125,7 @@ function createParticleMaterial(
   color: string,
   size: number,
   fallSpeed: number,
+  emissionScale = 1,
 ) {
   return new ShaderMaterial({
     vertexShader: particleVertexShader,
@@ -139,7 +141,7 @@ function createParticleMaterial(
       uFallSpeed: { value: fallSpeed },
       uWindDirection: { value: new Vector2(0.86, 0.5).normalize() },
       uRainStreakOrientation: { value: new Vector3(0, -1, 0) },
-      uColor: { value: new Color(color) },
+      uColor: { value: new Color(color).multiplyScalar(emissionScale) },
       uOpacity: { value: 0 },
     },
   })
@@ -162,9 +164,15 @@ export function WeatherParticles({
       createParticleMaterial(0, '#d8c279', 1.2, 0.08),
       createParticleMaterial(1, '#a8cce2', 4.6, 8),
       createParticleMaterial(2, '#edf4f2', 5.6, 0.7),
-      createParticleMaterial(3, '#d9ed72', 3.8, 0),
+      createParticleMaterial(
+        3,
+        '#d9ed72',
+        3.8,
+        0,
+        getBloomEmissionScale(quality.postprocessing, 'firefly'),
+      ),
     ],
-    [],
+    [quality.postprocessing],
   )
 
   useEffect(() => {

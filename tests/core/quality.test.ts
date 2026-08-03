@@ -81,4 +81,27 @@ describe('quality selection', () => {
       grassTransmission: false,
     })
   })
+
+  it('applies the exact restrained postprocessing policy', () => {
+    expect(QUALITY_PROFILES.high).toMatchObject({
+      postprocessing: true,
+      bloomStrength: 0.22,
+      bloomResolutionScale: 1,
+      vignetteStrength: 0.055,
+      grassAtlas: true,
+    })
+    expect(QUALITY_PROFILES.medium).toMatchObject({
+      postprocessing: true,
+      bloomStrength: 0.14,
+      bloomResolutionScale: 0.6,
+      vignetteStrength: 0.045,
+    })
+    expect(QUALITY_PROFILES.low).toMatchObject({
+      postprocessing: false,
+      bloomStrength: 0,
+      bloomResolutionScale: 0,
+      vignetteStrength: 0,
+      grassAtlas: false,
+    })
+  })
 })

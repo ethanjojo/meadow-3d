@@ -10,13 +10,16 @@ import {
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
+import type { QualityProfile } from '../core/quality'
 import type {
   CelestialArcPoint,
   CelestialPresentation,
 } from '../core/celestial'
 import { projectCelestialPoint } from './celestialProjection'
+import { getBloomEmissionScale } from './postProcessingShaders'
 
 interface CelestialBodiesProps {
+  quality: QualityProfile
   atmosphereRef: MutableRefObject<AtmosphereState>
   celestialPresentationRef: MutableRefObject<CelestialPresentation>
   visible: boolean
@@ -43,12 +46,12 @@ const haloFragmentShader = /* glsl */ `
   }
 `
 
-function createHaloMaterial(color: string) {
+function createHaloMaterial(color: string, emissionScale: number) {
   return new ShaderMaterial({
     vertexShader: haloVertexShader,
     fragmentShader: haloFragmentShader,
     uniforms: {
-      uColor: { value: new Color(color) },
+      uColor: { value: new Color(color).multiplyScalar(emissionScale) },
       uOpacity: { value: 0 },
     },
     transparent: true,
@@ -80,6 +83,7 @@ function placeBody(
 }
 
 export function CelestialBodies({
+  quality,
   atmosphereRef,
   celestialPresentationRef,
   visible,
@@ -89,10 +93,13 @@ export function CelestialBodies({
   const moonDiscRef = useRef<Mesh>(null)
   const moonHaloRef = useRef<Mesh>(null)
   const position = useMemo(() => new Vector3(), [])
+  const bloomEnabled = quality.postprocessing
   const materials = useMemo(
     () => ({
       sunDisc: new MeshBasicMaterial({
-        color: '#fff0bd',
+        color: new Color('#fff0bd').multiplyScalar(
+          getBloomEmissionScale(bloomEnabled, 'sun'),
+        ),
         transparent: true,
         opacity: 0,
         depthTest: true,
@@ -100,7 +107,10 @@ export function CelestialBodies({
         blending: AdditiveBlending,
         toneMapped: false,
       }),
-      sunHalo: createHaloMaterial('#ffc77a'),
+      sunHalo: createHaloMaterial(
+        '#ffc77a',
+        getBloomEmissionScale(bloomEnabled, 'sun'),
+      ),
       moonDisc: new MeshBasicMaterial({
         color: '#dbe8ff',
         transparent: true,
@@ -110,9 +120,12 @@ export function CelestialBodies({
         blending: AdditiveBlending,
         toneMapped: false,
       }),
-      moonHalo: createHaloMaterial('#9cbce8'),
+      moonHalo: createHaloMaterial(
+        '#9cbce8',
+        getBloomEmissionScale(bloomEnabled, 'moon'),
+      ),
     }),
-    [],
+    [bloomEnabled],
   )
 
   useEffect(

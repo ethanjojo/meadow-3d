@@ -60,6 +60,10 @@ describe('shared environment state', () => {
         uSunColor: { value: new Color() },
         uMoonColor: { value: new Color() },
         uSkyColor: { value: new Color() },
+        uGroundLightColor: { value: new Color() },
+        uSkyLightIntensity: { value: 0 },
+        uSunIntensity: { value: 0 },
+        uMoonIntensity: { value: 0 },
         uFogColor: { value: new Color() },
         uFogDensity: { value: 0 },
       },
@@ -74,16 +78,23 @@ describe('shared environment state', () => {
       atmosphere.celestial.moon.direction,
     )
     expect(material.uniforms.uSunColor.value.toArray()).toEqual(
-      atmosphere.sunColor.clone().multiplyScalar(atmosphere.sunIntensity).toArray(),
+      atmosphere.sunColor.toArray(),
     )
     expect(material.uniforms.uMoonColor.value.toArray()).toEqual(
-      atmosphere.moonColor.clone().multiplyScalar(atmosphere.moonIntensity).toArray(),
+      atmosphere.moonColor.toArray(),
     )
     expect(material.uniforms.uSkyColor.value.toArray()).toEqual(
-      atmosphere.skyLightColor
-        .clone()
-        .multiplyScalar(atmosphere.skyLightIntensity)
-        .toArray(),
+      atmosphere.skyLightColor.toArray(),
+    )
+    expect(material.uniforms.uGroundLightColor.value.toArray()).toEqual(
+      atmosphere.groundLightColor.toArray(),
+    )
+    expect(material.uniforms.uSkyLightIntensity.value).toBe(
+      atmosphere.skyLightIntensity,
+    )
+    expect(material.uniforms.uSunIntensity.value).toBe(atmosphere.sunIntensity)
+    expect(material.uniforms.uMoonIntensity.value).toBe(
+      atmosphere.moonIntensity,
     )
     expect(material.uniforms.uFogColor.value.getHex()).toBe(
       atmosphere.fogColor.getHex(),

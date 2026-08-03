@@ -104,6 +104,7 @@ export const grassFragmentShader = /* glsl */ `
   uniform vec3 uSunColor;
   uniform vec3 uMoonColor;
   uniform vec3 uSkyColor;
+  uniform vec3 uGroundLightColor;
   uniform vec3 uSunDirection;
   uniform vec3 uMoonDirection;
   uniform vec3 uFogColor;
@@ -113,6 +114,10 @@ export const grassFragmentShader = /* glsl */ `
   uniform float uSnowCoverage;
   uniform float uLayerFade;
   uniform float uFogDensity;
+  uniform float uSkyLightIntensity;
+  uniform float uSunIntensity;
+  uniform float uMoonIntensity;
+  uniform float uStormFlash;
   uniform sampler2D uGrassColorAtlas;
   uniform sampler2D uGrassSurfaceAtlas;
   uniform float uUseAtlas;
@@ -156,24 +161,27 @@ export const grassFragmentShader = /* glsl */ `
     float sunFacing = max(dot(normal, normalize(uSunDirection)), 0.0);
     float moonFacing = max(dot(normal, normalize(uMoonDirection)), 0.0);
     float skyFacing = normal.y * 0.5 + 0.5;
+    vec3 hemisphereFill =
+      mix(uGroundLightColor, uSkyColor, skyFacing) * uSkyLightIntensity;
     vec3 light =
-      uSkyColor * (0.38 + skyFacing * 0.34) +
-      uSunColor * sunFacing * 0.72 +
-      uMoonColor * moonFacing * 0.48;
+      hemisphereFill +
+      uSunColor * sunFacing * uSunIntensity * 0.72 +
+      uMoonColor * moonFacing * uMoonIntensity * 0.48;
     vec3 litColor = grassColor * light;
     float roughness = mix(1.0, surfaceData.r, uUseAtlas);
     float wetHighlight =
       uWetness *
       pow(sunFacing, mix(14.0, 24.0, roughness)) *
       (0.18 + lowerBlade * 0.32);
-    litColor += uSunColor * wetHighlight;
+    litColor += uSunColor * wetHighlight * uSunIntensity;
     float backlight = max(dot(-normal, normalize(uSunDirection)), 0.0);
     float transmission =
       uUseTransmission *
       surfaceData.g *
       backlight *
       smoothstep(0.16, 0.92, vHeight);
-    litColor += uSunColor * transmission * 0.16;
+    litColor += uSunColor * transmission * uSunIntensity * 0.16;
+    litColor += vec3(1.0) * uStormFlash * (0.16 + vHeight * 0.08);
 
     float contactDepth = 1.0 - smoothstep(5.0, 26.0, vViewDepth);
     float rootContact =
@@ -182,8 +190,9 @@ export const grassFragmentShader = /* glsl */ `
       mix(0.55, 1.0, contactDepth);
     litColor *= 1.0 - rootContact;
 
+    float bladeFogDensity = uFogDensity * mix(1.12, 0.92, vHeight);
     float fogAmount = 1.0 - exp(
-      -uFogDensity * uFogDensity * vViewDepth * vViewDepth
+      -bladeFogDensity * bladeFogDensity * vViewDepth * vViewDepth
     );
     fogAmount = mix(fogAmount, 1.0, 1.0 - uLayerFade);
     gl_FragColor = vec4(mix(litColor, uFogColor, fogAmount), 1.0);

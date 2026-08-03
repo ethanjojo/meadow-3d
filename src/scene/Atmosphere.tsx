@@ -251,6 +251,7 @@ export function Atmosphere({
       </mesh>
       <points geometry={starsGeometry} material={starsMaterial} frustumCulled={false} />
       <CelestialBodies
+        quality={quality}
         atmosphereRef={atmosphereRef}
         celestialPresentationRef={celestialPresentationRef}
         visible={visible}
