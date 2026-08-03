@@ -11,6 +11,7 @@ import {
   DEFAULT_SIMULATION_SETTINGS,
   parseSimulationSettings,
   type EnvironmentSnapshot,
+  type EnvironmentTransitionFrame,
   type SimulationSettings,
 } from './core/simulation'
 import { hasWebGLSupport } from './core/webgl'
@@ -20,6 +21,25 @@ import { NatureScene } from './scene/NatureScene'
 import './styles.css'
 
 const ENVIRONMENT_STORAGE_KEY = 'living-meadow:environment'
+
+interface VisibleTransitionSample {
+  snapshot: EnvironmentSnapshot
+  active: boolean
+  progress: number
+  revision: number
+}
+
+function copyVisibleSnapshot(
+  snapshot: EnvironmentSnapshot,
+): EnvironmentSnapshot {
+  return {
+    ...snapshot,
+    weather: {
+      ...snapshot.weather,
+      windDirection: [...snapshot.weather.windDirection] as [number, number],
+    },
+  }
+}
 
 function getInitialSimulationSettings(): SimulationSettings {
   try {
@@ -37,8 +57,8 @@ export function App() {
   const [simulationSettings, setSimulationSettings] = useState(
     getInitialSimulationSettings,
   )
-  const [visibleSnapshot, setVisibleSnapshot] =
-    useState<EnvironmentSnapshot | null>(null)
+  const [visibleFrame, setVisibleFrame] =
+    useState<VisibleTransitionSample | null>(null)
   const audioRef = useRef<AmbientAudioController | null>(null)
   const webglAvailable = useMemo(hasWebGLSupport, [])
   const reducedMotion = useMemo(
@@ -73,9 +93,14 @@ export function App() {
   }, [])
 
   const handleNatureSample = useCallback(
-    (snapshot: EnvironmentSnapshot) => {
-      audioRef.current?.setNature(snapshot)
-      setVisibleSnapshot(snapshot)
+    (frame: EnvironmentTransitionFrame) => {
+      audioRef.current?.setNature(frame)
+      setVisibleFrame({
+        snapshot: copyVisibleSnapshot(frame.snapshot),
+        active: frame.active,
+        progress: frame.progress,
+        revision: frame.revision,
+      })
     },
     [],
   )
@@ -113,6 +138,10 @@ export function App() {
       data-simulation-mode={simulationSettings.mode}
       data-weather={simulationSettings.weather}
       data-season={simulationSettings.seasonIndex}
+      data-transition-active={visibleFrame?.active ?? false}
+      data-transition-progress={visibleFrame?.progress ?? 1}
+      data-auto-elapsed={visibleFrame?.snapshot.autoElapsed ?? 0}
+      data-transition-revision={visibleFrame?.revision ?? 0}
     >
       {webglAvailable ? (
         <SceneErrorBoundary fallback={fallback}>
@@ -147,7 +176,7 @@ export function App() {
         <div className="experience-controls">
           <EnvironmentSettings
             value={simulationSettings}
-            visibleSnapshot={visibleSnapshot}
+            visibleSnapshot={visibleFrame?.snapshot}
             onChange={handleSimulationSettingsChange}
           />
           <SoundToggle enabled={soundEnabled} onChange={handleSoundChange} />

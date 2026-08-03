@@ -72,30 +72,64 @@ const PROFILES: readonly SeasonProfile[] = [
   },
 ] as const
 
+const PROFILE_COLORS = PROFILES.map((profile) => ({
+  grass: new Color(profile.grass),
+  ground: new Color(profile.ground),
+  tip: new Color(profile.tip),
+}))
+
 function mix(from: number, to: number, amount: number) {
   return Math.min(1, Math.max(0, from + (to - from) * amount))
 }
 
-function mixColor(from: string, to: string, amount: number) {
-  return new Color(from).lerp(new Color(to), amount)
-}
-
 export function getSeasonAppearance(
   snapshot: NatureSnapshot,
+  target?: SeasonAppearance,
 ): SeasonAppearance {
   const current = PROFILES[snapshot.seasonIndex]
   const next = PROFILES[snapshot.nextSeasonIndex]
+  const currentColors = PROFILE_COLORS[snapshot.seasonIndex]
+  const nextColors = PROFILE_COLORS[snapshot.nextSeasonIndex]
   const amount = snapshot.seasonBlend
-
-  return {
-    grassColor: mixColor(current.grass, next.grass, amount),
-    groundColor: mixColor(current.ground, next.ground, amount),
-    tipColor: mixColor(current.tip, next.tip, amount),
-    dryness: mix(current.dryness, next.dryness, amount),
-    snowCoverage: mix(current.snow, next.snow, amount),
-    frost: mix(current.frost, next.frost, amount),
-    pollen: mix(current.pollen, next.pollen, amount),
-    rainBias: mix(current.rain, next.rain, amount),
-    snowBias: mix(current.snowBias, next.snowBias, amount),
+  const appearance = target ?? {
+    grassColor: new Color(),
+    groundColor: new Color(),
+    tipColor: new Color(),
+    dryness: 0,
+    snowCoverage: 0,
+    frost: 0,
+    pollen: 0,
+    rainBias: 0,
+    snowBias: 0,
   }
+
+  appearance.grassColor.copy(currentColors.grass).lerp(nextColors.grass, amount)
+  appearance.groundColor.copy(currentColors.ground).lerp(nextColors.ground, amount)
+  appearance.tipColor.copy(currentColors.tip).lerp(nextColors.tip, amount)
+  appearance.dryness = mix(current.dryness, next.dryness, amount)
+  appearance.snowCoverage = mix(current.snow, next.snow, amount)
+  appearance.frost = mix(current.frost, next.frost, amount)
+  appearance.pollen = mix(current.pollen, next.pollen, amount)
+  appearance.rainBias = mix(current.rain, next.rain, amount)
+  appearance.snowBias = mix(current.snowBias, next.snowBias, amount)
+  return appearance
+}
+
+export function blendSeasonAppearance(
+  source: SeasonAppearance,
+  target: SeasonAppearance,
+  amount: number,
+  output: SeasonAppearance,
+): SeasonAppearance {
+  const blend = Math.min(1, Math.max(0, amount))
+  output.grassColor.copy(source.grassColor).lerp(target.grassColor, blend)
+  output.groundColor.copy(source.groundColor).lerp(target.groundColor, blend)
+  output.tipColor.copy(source.tipColor).lerp(target.tipColor, blend)
+  output.dryness = mix(source.dryness, target.dryness, blend)
+  output.snowCoverage = mix(source.snowCoverage, target.snowCoverage, blend)
+  output.frost = mix(source.frost, target.frost, blend)
+  output.pollen = mix(source.pollen, target.pollen, blend)
+  output.rainBias = mix(source.rainBias, target.rainBias, blend)
+  output.snowBias = mix(source.snowBias, target.snowBias, blend)
+  return output
 }

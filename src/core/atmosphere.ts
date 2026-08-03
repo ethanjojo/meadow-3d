@@ -41,6 +41,31 @@ export interface AtmosphereState {
   exposure: number
 }
 
+function mix(from: number, to: number, amount: number) {
+  return from + (to - from) * amount
+}
+
+function blendDirection(
+  source: readonly [number, number, number],
+  target: readonly [number, number, number],
+  amount: number,
+  output: [number, number, number],
+) {
+  output[0] = mix(source[0], target[0], amount)
+  output[1] = mix(source[1], target[1], amount)
+  output[2] = mix(source[2], target[2], amount)
+  let length = Math.hypot(output[0], output[1], output[2])
+  if (length < 1e-6) {
+    output[0] = source[0]
+    output[1] = source[1]
+    output[2] = source[2]
+    length = Math.hypot(output[0], output[1], output[2]) || 1
+  }
+  output[0] /= length
+  output[1] /= length
+  output[2] /= length
+}
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value))
 }
@@ -173,4 +198,77 @@ export function getAtmosphere(
     1.15,
   )
   return state
+}
+
+export function blendAtmosphere(
+  source: AtmosphereState,
+  target: AtmosphereState,
+  amount: number,
+  output: AtmosphereState,
+): AtmosphereState {
+  const blend = clamp(amount, 0, 1)
+  output.skyTop.copy(source.skyTop).lerp(target.skyTop, blend)
+  output.skyHorizon.copy(source.skyHorizon).lerp(target.skyHorizon, blend)
+  output.fogColor.copy(source.fogColor).lerp(target.fogColor, blend)
+  output.sunColor.copy(source.sunColor).lerp(target.sunColor, blend)
+  output.moonColor.copy(source.moonColor).lerp(target.moonColor, blend)
+  output.skyLightColor
+    .copy(source.skyLightColor)
+    .lerp(target.skyLightColor, blend)
+  output.groundLightColor
+    .copy(source.groundLightColor)
+    .lerp(target.groundLightColor, blend)
+
+  blendDirection(
+    source.celestial.sun.direction,
+    target.celestial.sun.direction,
+    blend,
+    output.celestial.sun.direction,
+  )
+  blendDirection(
+    source.celestial.moon.direction,
+    target.celestial.moon.direction,
+    blend,
+    output.celestial.moon.direction,
+  )
+  output.celestial.sun.visibility = mix(
+    source.celestial.sun.visibility,
+    target.celestial.sun.visibility,
+    blend,
+  )
+  output.celestial.sun.halo = mix(
+    source.celestial.sun.halo,
+    target.celestial.sun.halo,
+    blend,
+  )
+  output.celestial.moon.visibility = mix(
+    source.celestial.moon.visibility,
+    target.celestial.moon.visibility,
+    blend,
+  )
+  output.celestial.moon.halo = mix(
+    source.celestial.moon.halo,
+    target.celestial.moon.halo,
+    blend,
+  )
+
+  output.sunElevation = mix(source.sunElevation, target.sunElevation, blend)
+  output.sunAzimuth = mix(source.sunAzimuth, target.sunAzimuth, blend)
+  output.sunIntensity = mix(source.sunIntensity, target.sunIntensity, blend)
+  output.moonIntensity = mix(source.moonIntensity, target.moonIntensity, blend)
+  output.skyLightIntensity = mix(
+    source.skyLightIntensity,
+    target.skyLightIntensity,
+    blend,
+  )
+  output.starOpacity = mix(source.starOpacity, target.starOpacity, blend)
+  output.sunVisibility = mix(source.sunVisibility, target.sunVisibility, blend)
+  output.moonVisibility = mix(source.moonVisibility, target.moonVisibility, blend)
+  output.sunHalo = mix(source.sunHalo, target.sunHalo, blend)
+  output.moonHalo = mix(source.moonHalo, target.moonHalo, blend)
+  output.cloudOpacity = mix(source.cloudOpacity, target.cloudOpacity, blend)
+  output.cloudSpeed = mix(source.cloudSpeed, target.cloudSpeed, blend)
+  output.fogDensity = mix(source.fogDensity, target.fogDensity, blend)
+  output.exposure = mix(source.exposure, target.exposure, blend)
+  return output
 }

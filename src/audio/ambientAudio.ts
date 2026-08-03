@@ -1,8 +1,11 @@
-import type { EnvironmentSnapshot } from '../core/simulation'
+import type {
+  EnvironmentSnapshot,
+  EnvironmentTransitionFrame,
+} from '../core/simulation'
 
 export interface AmbientAudioController {
   start: () => Promise<boolean>
-  setNature: (snapshot: EnvironmentSnapshot) => void
+  setNature: (frame: EnvironmentTransitionFrame) => void
   suspend: () => Promise<void>
   resume: () => Promise<void>
   dispose: () => Promise<void>
@@ -41,6 +44,34 @@ export function deriveAmbientAudioMix(
   }
 }
 
+function blendAmbientAudioMix(
+  source: AmbientAudioMix,
+  target: AmbientAudioMix,
+  amount: number,
+): AmbientAudioMix {
+  const blend = clamp01(amount)
+  return {
+    chirpLayer: blend < 0.5 ? source.chirpLayer : target.chirpLayer,
+    windGain: source.windGain + (target.windGain - source.windGain) * blend,
+    windFrequency:
+      source.windFrequency +
+      (target.windFrequency - source.windFrequency) * blend,
+    rainGain: source.rainGain + (target.rainGain - source.rainGain) * blend,
+    dayGain: source.dayGain + (target.dayGain - source.dayGain) * blend,
+    nightGain: source.nightGain + (target.nightGain - source.nightGain) * blend,
+  }
+}
+
+export function deriveAmbientAudioMixFromFrame(
+  frame: EnvironmentTransitionFrame,
+): AmbientAudioMix {
+  return blendAmbientAudioMix(
+    deriveAmbientAudioMix(frame.source),
+    deriveAmbientAudioMix(frame.target),
+    frame.progress,
+  )
+}
+
 type SafariWindow = Window & {
   webkitAudioContext?: typeof AudioContext
 }
@@ -57,15 +88,17 @@ export function createAmbientAudio(): AmbientAudioController {
   let nightGain: GainNode | null = null
   let lfo: OscillatorNode | null = null
   let chirpTimer: number | null = null
-  let latestSnapshot: EnvironmentSnapshot | null = null
+  let latestMix: AmbientAudioMix | null = null
+  let frozenMix: AmbientAudioMix | null = null
+  let lastAppliedMix: AmbientAudioMix | null = null
+  let lastRevision = -1
 
   const createChirp = () => {
-    if (!context || context.state !== 'running' || !latestSnapshot) return
+    if (!context || context.state !== 'running' || !latestMix) return
 
     const oscillator = context.createOscillator()
     const gain = context.createGain()
-    const mix = deriveAmbientAudioMix(latestSnapshot)
-    const daylight = mix.chirpLayer === 'day'
+    const daylight = latestMix.chirpLayer === 'day'
     const startTime = context.currentTime
     oscillator.type = daylight ? 'sine' : 'triangle'
     oscillator.frequency.setValueAtTime(daylight ? 2_400 : 4_800, startTime)
@@ -147,11 +180,24 @@ export function createAmbientAudio(): AmbientAudioController {
       }
     },
 
-    setNature(snapshot) {
-      latestSnapshot = snapshot
+    setNature(frame) {
+      const sourceMix = deriveAmbientAudioMix(frame.source)
+      const targetMix = deriveAmbientAudioMix(frame.target)
+      if (frame.revision !== lastRevision) {
+        frozenMix = lastAppliedMix ? { ...lastAppliedMix } : sourceMix
+        lastRevision = frame.revision
+      } else if (!frame.active) {
+        frozenMix = sourceMix
+      }
+      const mix = blendAmbientAudioMix(
+        frozenMix ?? sourceMix,
+        targetMix,
+        frame.progress,
+      )
+      latestMix = mix
+      lastAppliedMix = mix
       if (!context || !windGain || !windFilter) return
       const now = context.currentTime
-      const mix = deriveAmbientAudioMix(snapshot)
       windGain.gain.setTargetAtTime(
         mix.windGain,
         now,
@@ -204,6 +250,10 @@ export function createAmbientAudio(): AmbientAudioController {
       lfo?.disconnect()
       if (context && context.state !== 'closed') await context.close()
       context = null
+      latestMix = null
+      frozenMix = null
+      lastAppliedMix = null
+      lastRevision = -1
     },
   }
 }

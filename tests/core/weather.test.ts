@@ -4,6 +4,7 @@ import type { NatureSnapshot } from '../../src/core/natureClock'
 import type { SeasonAppearance } from '../../src/core/season'
 import {
   blendWeather,
+  blendWeatherEffects,
   deriveRainStreakOrientation,
   deriveWeatherEffects,
   getAutomaticWeather,
@@ -199,5 +200,35 @@ describe('getWeatherOpacity', () => {
       reducedMotion: true,
     })
     expect(effects.stormFlash).toBe(0)
+  })
+
+  it('blends all derived effects into reusable storage', () => {
+    const source = {
+      pollen: 0.8,
+      rain: 0,
+      snow: 0,
+      fireflies: 0.6,
+      dew: 0.4,
+      stormFlash: 0,
+    }
+    const target = {
+      pollen: 0,
+      rain: 1,
+      snow: 0.5,
+      fireflies: 0,
+      dew: 0,
+      stormFlash: 0.8,
+    }
+    const output = { ...source }
+
+    expect(blendWeatherEffects(source, target, 0.5, output)).toBe(output)
+    expect(output).toEqual({
+      pollen: 0.4,
+      rain: 0.5,
+      snow: 0.25,
+      fireflies: 0.3,
+      dew: 0.2,
+      stormFlash: 0.4,
+    })
   })
 })

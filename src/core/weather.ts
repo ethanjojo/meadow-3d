@@ -209,6 +209,22 @@ export function deriveWeatherEffects({
   return effects
 }
 
+export function blendWeatherEffects(
+  source: WeatherEffects,
+  target: WeatherEffects,
+  amount: number,
+  output: WeatherEffects,
+): WeatherEffects {
+  const blend = clamp01(amount)
+  output.pollen = mix(source.pollen, target.pollen, blend)
+  output.rain = mix(source.rain, target.rain, blend)
+  output.snow = mix(source.snow, target.snow, blend)
+  output.fireflies = mix(source.fireflies, target.fireflies, blend)
+  output.dew = mix(source.dew, target.dew, blend)
+  output.stormFlash = mix(source.stormFlash, target.stormFlash, blend)
+  return output
+}
+
 function writeWeather(
   weather: WeatherProfile,
   target?: WeatherState,

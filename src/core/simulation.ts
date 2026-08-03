@@ -299,23 +299,3 @@ export function stepEnvironmentTransition(
 
   return frame
 }
-
-export function stepEnvironment(
-  current: EnvironmentSnapshot,
-  auto: NatureSnapshot,
-  settings: SimulationSettings,
-  deltaSeconds: number,
-): EnvironmentSnapshot {
-  const delta = Number.isFinite(deltaSeconds)
-    ? clamp(deltaSeconds, 0, 0.1)
-    : 0
-  const amount = 1 - Math.exp(-delta / 2.5)
-  const target = createEnvironmentSnapshot(auto, settings)
-
-  return createSnapshot(
-    auto,
-    mixCircular(current.dayPhase, target.dayPhase, 1, amount),
-    mixCircular(current.seasonPosition, target.seasonPosition, 4, amount),
-    blendWeather(current.weather, target.weather, amount),
-  )
-}

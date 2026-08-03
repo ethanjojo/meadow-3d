@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { getCelestialState } from '../../src/core/celestial'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
-import { advanceCloudPhase, getAtmosphere } from '../../src/core/atmosphere'
+import {
+  advanceCloudPhase,
+  blendAtmosphere,
+  getAtmosphere,
+} from '../../src/core/atmosphere'
 import {
   createEnvironmentSnapshot,
   type WeatherPreset,
@@ -96,5 +100,33 @@ describe('getAtmosphere', () => {
     expect(updated.sunColor.getHexString()).toBe('fff2cf')
     expect(updated.moonColor.getHexString()).toBe('8ba8cf')
     expect(updated.skyLightIntensity).toBeGreaterThan(0)
+  })
+
+  it('blends complete lighting state into reusable storage', () => {
+    const source = sampleAtDayPhase(0.25, 'clear')
+    const target = sampleAtDayPhase(0.5, 'storm')
+    const output = sampleAtDayPhase(0, 'fog')
+    const skyTop = output.skyTop
+    const celestial = output.celestial
+    const expectedSky = source.skyTop.clone().lerp(target.skyTop, 0.5)
+
+    expect(blendAtmosphere(source, target, 0.5, output)).toBe(output)
+    expect(output.skyTop).toBe(skyTop)
+    expect(output.celestial).toBe(celestial)
+    expect(output.skyTop.getHex()).toBe(expectedSky.getHex())
+    expect(output.fogDensity).toBeCloseTo(
+      (source.fogDensity + target.fogDensity) / 2,
+    )
+    expect(output.exposure).toBeCloseTo((source.exposure + target.exposure) / 2)
+    expect(output.groundLightColor.getHex()).toBe(
+      source.groundLightColor.clone().lerp(target.groundLightColor, 0.5).getHex(),
+    )
+    expect(output.sunIntensity).toBeCloseTo(
+      (source.sunIntensity + target.sunIntensity) / 2,
+    )
+    expect(output.moonIntensity).toBeCloseTo(
+      (source.moonIntensity + target.moonIntensity) / 2,
+    )
+    expect(Math.hypot(...output.celestial.sun.direction)).toBeCloseTo(1)
   })
 })

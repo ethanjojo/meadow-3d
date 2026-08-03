@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/App'
 import type {
   EnvironmentSnapshot,
+  EnvironmentTransitionFrame,
   SimulationSettings,
 } from '../../src/core/simulation'
 import { hasWebGLSupport } from '../../src/core/webgl'
@@ -20,15 +21,15 @@ vi.mock('../../src/scene/NatureScene', () => ({
     onNatureSample,
   }: {
     simulationSettings: SimulationSettings
-    onNatureSample?: (snapshot: EnvironmentSnapshot) => void
+    onNatureSample?: (frame: EnvironmentTransitionFrame) => void
   }) => (
     <>
       <output data-testid="simulation-mode">{simulationSettings.mode}</output>
       <button
         type="button"
         aria-label="Publikovat živý stav scény"
-        onClick={() =>
-          onNatureSample?.({
+        onClick={() => {
+          const snapshot: EnvironmentSnapshot = {
             elapsed: 90,
             autoElapsed: 90,
             dayPhase: 0.5,
@@ -52,8 +53,18 @@ vi.mock('../../src/scene/NatureScene', () => ({
               windStrength: 0.95,
               windDirection: [0.86, 0.5],
             },
+          }
+          onNatureSample?.({
+            source: snapshot,
+            target: snapshot,
+            snapshot,
+            progress: 0.4,
+            elapsed: 1.2,
+            active: true,
+            settingsKey: 'manual:0.5:2:storm',
+            revision: 2,
           })
-        }
+        }}
       />
     </>
   ),
@@ -174,5 +185,21 @@ describe('App', () => {
     )
     expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
     expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-transition-active',
+      'true',
+    )
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-transition-progress',
+      '0.4',
+    )
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-auto-elapsed',
+      '90',
+    )
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-transition-revision',
+      '2',
+    )
   })
 })
