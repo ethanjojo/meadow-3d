@@ -209,65 +209,107 @@ export function deriveWeatherEffects({
   return effects
 }
 
-export function getWeatherProfile(preset: WeatherPreset): WeatherState {
-  const profile = WEATHER_PROFILES[preset]
-  return {
-    ...profile,
-    windDirection: [...profile.windDirection] as [number, number],
+function writeWeather(
+  weather: WeatherProfile,
+  target?: WeatherState,
+): WeatherState {
+  const result = target ?? {
+    preset: weather.preset,
+    cloudCover: 0,
+    fog: 0,
+    rain: 0,
+    snow: 0,
+    storm: 0,
+    wetness: 0,
+    fireflies: 0,
+    dew: 0,
+    windStrength: 0,
+    windDirection: [0, 0],
   }
+  result.preset = weather.preset
+  result.cloudCover = weather.cloudCover
+  result.fog = weather.fog
+  result.rain = weather.rain
+  result.snow = weather.snow
+  result.storm = weather.storm
+  result.wetness = weather.wetness
+  result.fireflies = weather.fireflies
+  result.dew = weather.dew
+  result.windStrength = weather.windStrength
+  const direction = result.windDirection as [number, number]
+  direction[0] = weather.windDirection[0]
+  direction[1] = weather.windDirection[1]
+  return result
+}
+
+export function getWeatherProfile(
+  preset: WeatherPreset,
+  target?: WeatherState,
+): WeatherState {
+  const profile = WEATHER_PROFILES[preset]
+  return writeWeather(profile, target)
 }
 
 export function blendWeather(
-  from: WeatherState,
-  to: WeatherState,
+  from: WeatherProfile,
+  to: WeatherProfile,
   amount: number,
+  target?: WeatherState,
 ): WeatherState {
   const blend = clamp01(amount)
-  return {
-    preset: blend === 0 ? from.preset : to.preset,
-    cloudCover: mix(from.cloudCover, to.cloudCover, blend),
-    fog: mix(from.fog, to.fog, blend),
-    rain: mix(from.rain, to.rain, blend),
-    snow: mix(from.snow, to.snow, blend),
-    storm: mix(from.storm, to.storm, blend),
-    wetness: mix(from.wetness, to.wetness, blend),
-    fireflies: mix(from.fireflies, to.fireflies, blend),
-    dew: mix(from.dew, to.dew, blend),
-    windStrength: mix(from.windStrength, to.windStrength, blend),
-    windDirection: [
-      mix(from.windDirection[0], to.windDirection[0], blend),
-      mix(from.windDirection[1], to.windDirection[1], blend),
-    ],
-  }
+  const result = target ?? getWeatherProfile(from.preset)
+  result.preset = blend === 0 ? from.preset : to.preset
+  result.cloudCover = mix(from.cloudCover, to.cloudCover, blend)
+  result.fog = mix(from.fog, to.fog, blend)
+  result.rain = mix(from.rain, to.rain, blend)
+  result.snow = mix(from.snow, to.snow, blend)
+  result.storm = mix(from.storm, to.storm, blend)
+  result.wetness = mix(from.wetness, to.wetness, blend)
+  result.fireflies = mix(from.fireflies, to.fireflies, blend)
+  result.dew = mix(from.dew, to.dew, blend)
+  result.windStrength = mix(from.windStrength, to.windStrength, blend)
+  const direction = result.windDirection as [number, number]
+  direction[0] = mix(from.windDirection[0], to.windDirection[0], blend)
+  direction[1] = mix(from.windDirection[1], to.windDirection[1], blend)
+  return result
 }
 
 export function getAutomaticWeather(
   snapshot: NatureSnapshot,
   season: SeasonAppearance,
+  target?: WeatherState,
 ): WeatherState {
   const intensity = clamp01(snapshot.weatherIntensity)
 
   if (season.snowBias > season.rainBias) {
-    return blendWeather(getWeatherProfile('clear'), getWeatherProfile('snow'), intensity)
+    return blendWeather(
+      WEATHER_PROFILES.clear,
+      WEATHER_PROFILES.snow,
+      intensity,
+      target,
+    )
   }
   if (intensity > 0.82) {
     return blendWeather(
-      getWeatherProfile('rain'),
-      getWeatherProfile('storm'),
+      WEATHER_PROFILES.rain,
+      WEATHER_PROFILES.storm,
       (intensity - 0.82) / 0.18,
+      target,
     )
   }
   if (intensity > 0.56) {
     return blendWeather(
-      getWeatherProfile('cloudy'),
-      getWeatherProfile('rain'),
+      WEATHER_PROFILES.cloudy,
+      WEATHER_PROFILES.rain,
       (intensity - 0.56) / 0.26,
+      target,
     )
   }
   return blendWeather(
-    getWeatherProfile('clear'),
-    getWeatherProfile('cloudy'),
+    WEATHER_PROFILES.clear,
+    WEATHER_PROFILES.cloudy,
     intensity / 0.56,
+    target,
   )
 }
 

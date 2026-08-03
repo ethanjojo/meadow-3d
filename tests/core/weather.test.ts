@@ -87,6 +87,29 @@ describe('getWeatherOpacity', () => {
     expect(getWeatherProfile('clear').windDirection).toEqual([0.86, 0.5])
   })
 
+  it('reuses caller-owned profile and wind direction storage', () => {
+    const target = getWeatherProfile('snow')
+    const direction = target.windDirection
+
+    expect(getWeatherProfile('clear', target)).toBe(target)
+    expect(target.windDirection).toBe(direction)
+    expect(target).toEqual(getWeatherProfile('clear'))
+  })
+
+  it('reuses caller-owned blend and automatic weather storage', () => {
+    const clear = getWeatherProfile('clear')
+    const snow = getWeatherProfile('snow')
+    const target = getWeatherProfile('storm')
+    const direction = target.windDirection
+
+    expect(blendWeather(clear, snow, 0.5, target)).toBe(target)
+    expect(target.windDirection).toBe(direction)
+    expect(target.snow).toBeCloseTo(0.5)
+
+    expect(getAutomaticWeather(snapshot, season, target)).toBe(target)
+    expect(target.windDirection).toBe(direction)
+  })
+
   it('keeps automatic winter precipitation season-appropriate', () => {
     const weather = getAutomaticWeather(
       { ...snapshot, weatherIntensity: 1 },

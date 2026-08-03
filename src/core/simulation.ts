@@ -36,6 +36,19 @@ export interface EnvironmentSnapshot extends NatureSnapshot {
   weather: WeatherState
 }
 
+export interface EnvironmentTransitionFrame {
+  source: EnvironmentSnapshot
+  target: EnvironmentSnapshot
+  snapshot: EnvironmentSnapshot
+  progress: number
+  elapsed: number
+  active: boolean
+  settingsKey: string
+  revision: number
+}
+
+export const ENVIRONMENT_TRANSITION_DURATION = 3
+
 export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   mode: 'auto',
   dayPhase: 0.31,
@@ -65,6 +78,15 @@ function mixCircular(current: number, target: number, period: number, amount: nu
   return wrap(current + distance * amount, period)
 }
 
+function easeInOut(amount: number) {
+  const value = clamp(amount, 0, 1)
+  return value * value * (3 - 2 * value)
+}
+
+function getSettingsKey(settings: SimulationSettings) {
+  return `${settings.mode}:${settings.dayPhase}:${settings.seasonIndex}:${settings.weather}`
+}
+
 function isSeasonIndex(value: unknown): value is SeasonIndex {
   return Number.isInteger(value) && typeof value === 'number' && value >= 0 && value <= 3
 }
@@ -73,45 +95,57 @@ function isWeatherPreset(value: unknown): value is WeatherPreset {
   return typeof value === 'string' && WEATHER_PRESETS.includes(value as WeatherPreset)
 }
 
-function getTarget(auto: NatureSnapshot, settings: SimulationSettings) {
-  if (settings.mode === 'manual') {
-    return {
-      dayPhase: wrap(settings.dayPhase, 1),
-      seasonPosition: settings.seasonIndex,
-      weather: getWeatherProfile(settings.weather),
-    }
-  }
-
-  return {
-    dayPhase: auto.dayPhase,
-    seasonPosition: auto.seasonIndex + auto.seasonBlend,
-    weather: getAutomaticWeather(auto, getSeasonAppearance(auto)),
-  }
-}
-
 function createSnapshot(
   auto: NatureSnapshot,
   dayPhase: number,
   seasonPosition: number,
   weather: WeatherState,
+  target?: EnvironmentSnapshot,
 ): EnvironmentSnapshot {
   const normalizedSeasonPosition = wrap(seasonPosition, 4)
   const seasonIndex = Math.floor(normalizedSeasonPosition) as SeasonIndex
   const seasonBlend = normalizedSeasonPosition - seasonIndex
-
-  return {
-    ...auto,
-    dayPhase: wrap(dayPhase, 1),
-    seasonPhase: normalizedSeasonPosition / 4,
-    seasonIndex,
-    nextSeasonIndex: ((seasonIndex + 1) % 4) as SeasonIndex,
-    seasonBlend,
-    windStrength: weather.windStrength,
-    weatherIntensity: Math.max(weather.rain, weather.snow, weather.storm),
-    autoElapsed: auto.elapsed,
-    seasonPosition: normalizedSeasonPosition,
-    weather,
+  const snapshot = target ?? {
+    elapsed: 0,
+    dayPhase: 0,
+    seasonPhase: 0,
+    seasonIndex: 0,
+    nextSeasonIndex: 1,
+    seasonBlend: 0,
+    windStrength: 0,
+    weatherIntensity: 0,
+    autoElapsed: 0,
+    seasonPosition: 0,
+    weather: getWeatherProfile(weather.preset),
   }
+
+  snapshot.elapsed = auto.elapsed
+  snapshot.dayPhase = wrap(dayPhase, 1)
+  snapshot.seasonPhase = normalizedSeasonPosition / 4
+  snapshot.seasonIndex = seasonIndex
+  snapshot.nextSeasonIndex = ((seasonIndex + 1) % 4) as SeasonIndex
+  snapshot.seasonBlend = seasonBlend
+  snapshot.windStrength = weather.windStrength
+  snapshot.weatherIntensity = Math.max(weather.rain, weather.snow, weather.storm)
+  snapshot.autoElapsed = auto.elapsed
+  snapshot.seasonPosition = normalizedSeasonPosition
+  blendWeather(weather, weather, 0, snapshot.weather)
+  return snapshot
+}
+
+function copyEnvironmentSnapshot(
+  source: EnvironmentSnapshot,
+  target?: EnvironmentSnapshot,
+) {
+  const snapshot = createSnapshot(
+    source,
+    source.dayPhase,
+    source.seasonPosition,
+    source.weather,
+    target,
+  )
+  snapshot.autoElapsed = source.autoElapsed
+  return snapshot
 }
 
 export function parseSimulationSettings(value: unknown): SimulationSettings {
@@ -143,9 +177,127 @@ export function parseSimulationSettings(value: unknown): SimulationSettings {
 export function createEnvironmentSnapshot(
   auto: NatureSnapshot,
   settings: SimulationSettings,
+  target?: EnvironmentSnapshot,
 ): EnvironmentSnapshot {
-  const target = getTarget(auto, settings)
-  return createSnapshot(auto, target.dayPhase, target.seasonPosition, target.weather)
+  if (settings.mode === 'manual') {
+    const weather = getWeatherProfile(settings.weather, target?.weather)
+    return createSnapshot(
+      auto,
+      settings.dayPhase,
+      settings.seasonIndex,
+      weather,
+      target,
+    )
+  }
+
+  const weather = getAutomaticWeather(
+    auto,
+    getSeasonAppearance(auto),
+    target?.weather,
+  )
+  return createSnapshot(
+    auto,
+    auto.dayPhase,
+    auto.seasonIndex + auto.seasonBlend,
+    weather,
+    target,
+  )
+}
+
+export function createEnvironmentTransition(
+  auto: NatureSnapshot,
+  settings: SimulationSettings,
+): EnvironmentTransitionFrame {
+  const snapshot = createEnvironmentSnapshot(auto, settings)
+  return {
+    source: copyEnvironmentSnapshot(snapshot),
+    target: copyEnvironmentSnapshot(snapshot),
+    snapshot,
+    progress: 1,
+    elapsed: ENVIRONMENT_TRANSITION_DURATION,
+    active: false,
+    settingsKey: getSettingsKey(settings),
+    revision: 0,
+  }
+}
+
+export function stepEnvironmentTransition(
+  frame: EnvironmentTransitionFrame,
+  auto: NatureSnapshot,
+  settings: SimulationSettings,
+  deltaSeconds: number,
+): EnvironmentTransitionFrame {
+  const nextKey = getSettingsKey(settings)
+
+  if (nextKey !== frame.settingsKey) {
+    frame.source = copyEnvironmentSnapshot(frame.snapshot)
+    frame.target = createEnvironmentSnapshot(auto, settings)
+    frame.progress = 0
+    frame.elapsed = 0
+    frame.active = true
+    frame.settingsKey = nextKey
+    frame.revision += 1
+    createSnapshot(
+      auto,
+      frame.source.dayPhase,
+      frame.source.seasonPosition,
+      frame.source.weather,
+      frame.snapshot,
+    )
+    return frame
+  }
+
+  if (!frame.active) {
+    createEnvironmentSnapshot(auto, settings, frame.target)
+    copyEnvironmentSnapshot(frame.target, frame.source)
+    copyEnvironmentSnapshot(frame.target, frame.snapshot)
+    frame.progress = 1
+    frame.elapsed = ENVIRONMENT_TRANSITION_DURATION
+    return frame
+  }
+
+  createEnvironmentSnapshot(auto, settings, frame.target)
+  const delta = Number.isFinite(deltaSeconds)
+    ? clamp(deltaSeconds, 0, 0.5)
+    : 0
+  frame.elapsed = Math.min(
+    ENVIRONMENT_TRANSITION_DURATION,
+    frame.elapsed + delta,
+  )
+  const completed =
+    frame.elapsed >= ENVIRONMENT_TRANSITION_DURATION - 1e-9
+  const linearProgress = completed
+    ? 1
+    : frame.elapsed / ENVIRONMENT_TRANSITION_DURATION
+  frame.progress = easeInOut(linearProgress)
+
+  createSnapshot(
+    auto,
+    mixCircular(frame.source.dayPhase, frame.target.dayPhase, 1, frame.progress),
+    mixCircular(
+      frame.source.seasonPosition,
+      frame.target.seasonPosition,
+      4,
+      frame.progress,
+    ),
+    blendWeather(
+      frame.source.weather,
+      frame.target.weather,
+      frame.progress,
+      frame.snapshot.weather,
+    ),
+    frame.snapshot,
+  )
+
+  if (completed) {
+    frame.elapsed = ENVIRONMENT_TRANSITION_DURATION
+    frame.progress = 1
+    frame.active = false
+    copyEnvironmentSnapshot(frame.target, frame.source)
+    copyEnvironmentSnapshot(frame.target, frame.snapshot)
+  }
+
+  return frame
 }
 
 export function stepEnvironment(
@@ -158,7 +310,7 @@ export function stepEnvironment(
     ? clamp(deltaSeconds, 0, 0.1)
     : 0
   const amount = 1 - Math.exp(-delta / 2.5)
-  const target = getTarget(auto, settings)
+  const target = createEnvironmentSnapshot(auto, settings)
 
   return createSnapshot(
     auto,
