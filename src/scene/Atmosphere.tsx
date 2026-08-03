@@ -13,6 +13,7 @@ import {
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
+import type { CelestialPresentation } from '../core/celestial'
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
@@ -24,6 +25,7 @@ interface AtmosphereProps {
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   atmosphereRef: MutableRefObject<AtmosphereState>
+  celestialPresentationRef: MutableRefObject<CelestialPresentation>
   effectsRef: MutableRefObject<WeatherEffects>
   reducedMotion: boolean
   visible: boolean
@@ -121,6 +123,7 @@ export function Atmosphere({
   quality,
   snapshotRef,
   atmosphereRef,
+  celestialPresentationRef,
   effectsRef,
   reducedMotion,
   visible,
@@ -249,6 +252,7 @@ export function Atmosphere({
       <points geometry={starsGeometry} material={starsMaterial} frustumCulled={false} />
       <CelestialBodies
         atmosphereRef={atmosphereRef}
+        celestialPresentationRef={celestialPresentationRef}
         visible={visible}
       />
       <CloudLayer

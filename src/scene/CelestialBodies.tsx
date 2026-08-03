@@ -5,13 +5,20 @@ import {
   Color,
   Mesh,
   MeshBasicMaterial,
+  PerspectiveCamera,
   ShaderMaterial,
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
+import type {
+  CelestialArcPoint,
+  CelestialPresentation,
+} from '../core/celestial'
+import { projectCelestialPoint } from './celestialProjection'
 
 interface CelestialBodiesProps {
   atmosphereRef: MutableRefObject<AtmosphereState>
+  celestialPresentationRef: MutableRefObject<CelestialPresentation>
   visible: boolean
 }
 
@@ -45,15 +52,36 @@ function createHaloMaterial(color: string) {
       uOpacity: { value: 0 },
     },
     transparent: true,
-    depthTest: false,
+    depthTest: true,
     depthWrite: false,
     blending: AdditiveBlending,
     toneMapped: false,
   })
 }
 
+function placeBody(
+  camera: PerspectiveCamera,
+  point: CelestialArcPoint,
+  disc: Mesh | null,
+  halo: Mesh | null,
+  position: Vector3,
+) {
+  projectCelestialPoint(camera, point, 88, position)
+  if (disc) {
+    disc.position.copy(position)
+    disc.quaternion.copy(camera.quaternion)
+    disc.scale.set(1, point.scaleY, 1)
+  }
+  if (halo) {
+    halo.position.copy(position)
+    halo.quaternion.copy(camera.quaternion)
+    halo.scale.set(1, point.scaleY, 1)
+  }
+}
+
 export function CelestialBodies({
   atmosphereRef,
+  celestialPresentationRef,
   visible,
 }: CelestialBodiesProps) {
   const sunDiscRef = useRef<Mesh>(null)
@@ -67,7 +95,7 @@ export function CelestialBodies({
         color: '#fff0bd',
         transparent: true,
         opacity: 0,
-        depthTest: false,
+        depthTest: true,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -77,7 +105,7 @@ export function CelestialBodies({
         color: '#dbe8ff',
         transparent: true,
         opacity: 0,
-        depthTest: false,
+        depthTest: true,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -98,26 +126,33 @@ export function CelestialBodies({
   )
 
   useFrame(({ camera }) => {
-    if (!visible) return
+    if (!visible || !(camera instanceof PerspectiveCamera)) return
 
     const atmosphere = atmosphereRef.current
-    const bodies = [
-      [sunDiscRef.current, sunHaloRef.current, atmosphere.celestial.sun.direction],
-      [moonDiscRef.current, moonHaloRef.current, atmosphere.celestial.moon.direction],
-    ] as const
+    const presentation = celestialPresentationRef.current
+    placeBody(
+      camera,
+      presentation.sun,
+      sunDiscRef.current,
+      sunHaloRef.current,
+      position,
+    )
+    placeBody(
+      camera,
+      presentation.moon,
+      moonDiscRef.current,
+      moonHaloRef.current,
+      position,
+    )
 
-    for (const [disc, halo, direction] of bodies) {
-      position.set(...direction).multiplyScalar(92)
-      disc?.position.copy(position)
-      halo?.position.copy(position)
-      disc?.quaternion.copy(camera.quaternion)
-      halo?.quaternion.copy(camera.quaternion)
-    }
-
-    materials.sunDisc.opacity = atmosphere.sunVisibility
-    materials.sunHalo.uniforms.uOpacity.value = atmosphere.sunHalo * 0.62
-    materials.moonDisc.opacity = atmosphere.moonVisibility * 0.92
-    materials.moonHalo.uniforms.uOpacity.value = atmosphere.moonHalo * 0.42
+    materials.sunDisc.opacity =
+      presentation.sun.opacity * atmosphere.sunVisibility
+    materials.sunHalo.uniforms.uOpacity.value =
+      presentation.sun.opacity * atmosphere.sunHalo * 0.62
+    materials.moonDisc.opacity =
+      presentation.moon.opacity * atmosphere.moonVisibility * 0.92
+    materials.moonHalo.uniforms.uOpacity.value =
+      presentation.moon.opacity * atmosphere.moonHalo * 0.42
   })
 
   return (

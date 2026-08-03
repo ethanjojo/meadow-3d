@@ -159,6 +159,139 @@ test('preserves an open daylight sky above the fixed grass horizon', async ({
   expect(skyCoverage).toBeGreaterThan(0.9)
 })
 
+test('projects celestial arcs across the sky while grass occludes the horizon edge', async ({
+  page,
+}, testInfo) => {
+  test.slow()
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.addInitScript(() => {
+    const raw = new URLSearchParams(window.location.search).get(
+      '__e2eCelestial',
+    )
+    if (!raw) return
+    const targetDayPhase = Number(raw.split(',')[1])
+    localStorage.setItem(
+      'living-meadow:environment',
+      JSON.stringify({
+        mode: 'manual',
+        dayPhase: targetDayPhase,
+        seasonIndex: 1,
+        weather: 'clear',
+      }),
+    )
+  })
+
+  const cases = [
+    {
+      name: 'sunrise',
+      query: '0.28,0.28,1',
+      body: 'sun' as const,
+      minimumX: -0.9,
+      maximumX: -0.6,
+      expectGrassOverlap: true,
+    },
+    {
+      name: 'sunset',
+      query: '0.72,0.72,1',
+      body: 'sun' as const,
+      minimumX: 0.6,
+      maximumX: 0.9,
+      expectGrassOverlap: true,
+    },
+    {
+      name: 'day-night-swap',
+      query: '0.5,0,0.75',
+      body: 'moon' as const,
+      minimumX: -0.8,
+      maximumX: -0.05,
+      expectGrassOverlap: false,
+    },
+  ]
+
+  for (const scene of cases) {
+    await page.goto(`/?__e2eCelestial=${scene.query}`)
+    await expect(page.locator('canvas')).toBeVisible()
+    await page.waitForFunction(
+      () =>
+        '__livingMeadowCelestial' in window &&
+        Boolean(
+          (window as Window & {
+            __livingMeadowCelestial?: { sun: unknown; moon: unknown }
+          }).__livingMeadowCelestial,
+        ),
+    )
+
+    const presentation = await page.evaluate(
+      () =>
+        (window as unknown as Window & {
+          __livingMeadowCelestial: {
+            sun: { x: number; y: number; opacity: number }
+            moon: { x: number; y: number; opacity: number }
+          }
+        }).__livingMeadowCelestial,
+    )
+    const body = presentation[scene.body]
+    expect(body.x).toBeGreaterThan(scene.minimumX)
+    expect(body.x).toBeLessThan(scene.maximumX)
+    expect(body.y).toBeGreaterThan(-0.05)
+    expect(body.opacity).toBeGreaterThan(0.25)
+
+    const screenshot = await page.screenshot({
+      path: testInfo.outputPath(`${scene.name}.png`),
+    })
+    if (!scene.expectGrassOverlap) continue
+
+    const overlap = await page.evaluate(
+      async ({ encodedScreenshot, center }) => {
+        const image = new Image()
+        image.src = `data:image/png;base64,${encodedScreenshot}`
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.width
+        canvas.height = image.height
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('2D canvas context unavailable')
+        context.drawImage(image, 0, 0)
+
+        const centerX = (center.x + 1) * image.width * 0.5
+        const centerY = (1 - center.y) * image.height * 0.5
+        let brightPixels = 0
+        let grassPixels = 0
+        for (let y = -24; y <= 30; y += 1) {
+          for (let x = -28; x <= 28; x += 1) {
+            const [red, green, blue] = context.getImageData(
+              Math.round(centerX + x),
+              Math.round(centerY + y),
+              1,
+              1,
+            ).data
+            if (red > 175 && green > 135 && red > blue * 1.02) {
+              brightPixels += 1
+            }
+            const luminance = (red + green + blue) / 3
+            if (
+              y > 8 &&
+              luminance < 175 &&
+              green > blue * 1.04 &&
+              red > blue * 1.03
+            ) {
+              grassPixels += 1
+            }
+          }
+        }
+        return { brightPixels, grassPixels }
+      },
+      {
+        encodedScreenshot: screenshot.toString('base64'),
+        center: body,
+      },
+    )
+
+    expect(overlap.brightPixels).toBeGreaterThan(20)
+    expect(overlap.grassPixels).toBeGreaterThan(8)
+  }
+})
+
 test('renders a deterministic shooting-star trail inside the real canvas', async ({
   page,
 }, testInfo) => {

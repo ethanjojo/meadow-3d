@@ -1,6 +1,7 @@
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { blendAtmosphere, getAtmosphere } from '../core/atmosphere'
+import { getCelestialPresentation } from '../core/celestial'
 import {
   DEFAULT_CLOCK,
   sampleNatureClock,
@@ -32,6 +33,38 @@ interface NatureSceneProps {
 
 const DAY_START_OFFSET = DEFAULT_CLOCK.dayDuration * 0.31
 
+interface DevelopmentCelestialOverride {
+  sourceDayPhase: number
+  targetDayPhase: number
+  progress: number
+}
+
+interface DevelopmentCelestialSample {
+  sun: { x: number; y: number; opacity: number }
+  moon: { x: number; y: number; opacity: number }
+}
+
+type DevelopmentWindow = Window & {
+  __livingMeadowCelestial?: DevelopmentCelestialSample
+}
+
+function getDevelopmentCelestialOverride(): DevelopmentCelestialOverride | null {
+  if (!import.meta.env.DEV) return null
+  const raw = new URLSearchParams(window.location.search).get(
+    '__e2eCelestial',
+  )
+  if (!raw) return null
+  const values = raw.split(',').map(Number)
+  if (values.length !== 3 || values.some((value) => !Number.isFinite(value))) {
+    return null
+  }
+  return {
+    sourceDayPhase: values[0],
+    targetDayPhase: values[1],
+    progress: Math.min(1, Math.max(0, values[2])),
+  }
+}
+
 export function NatureScene({
   qualityTier,
   reducedMotion,
@@ -41,6 +74,12 @@ export function NatureScene({
   simulationSettings,
 }: NatureSceneProps) {
   const quality = QUALITY_PROFILES[qualityTier]
+  const size = useThree((state) => state.size)
+  const aspect = size.width / Math.max(1, size.height)
+  const developmentCelestialOverride = useMemo(
+    getDevelopmentCelestialOverride,
+    [],
+  )
   const initialAutoSnapshot = useMemo(
     () => sampleNatureClock(DAY_START_OFFSET, DEFAULT_CLOCK),
     [],
@@ -105,6 +144,31 @@ export function NatureScene({
   const sourceEffectsRef = useRef(initialEffects.source)
   const targetEffectsRef = useRef(initialEffects.target)
   const effectsRef = useRef(initialEffects.resolved)
+  const initialCelestial = useMemo(
+    () => ({
+      frozen: getCelestialPresentation(
+        initialTransition.source.dayPhase,
+        initialTransition.target.dayPhase,
+        initialTransition.progress,
+        aspect,
+        reducedMotion,
+      ),
+      resolved: getCelestialPresentation(
+        initialTransition.source.dayPhase,
+        initialTransition.target.dayPhase,
+        initialTransition.progress,
+        aspect,
+        reducedMotion,
+      ),
+    }),
+    [aspect, initialTransition, reducedMotion],
+  )
+  const frozenCelestialSourceRef = useRef(initialCelestial.frozen)
+  const celestialPresentationRef = useRef(initialCelestial.resolved)
+  const developmentCelestialSampleRef = useRef<DevelopmentCelestialSample>({
+    sun: { x: 0, y: 0, opacity: 0 },
+    moon: { x: 0, y: 0, opacity: 0 },
+  })
   const lastResolvedRevisionRef = useRef(initialTransition.revision)
   const activeElapsedRef = useRef(0)
   const lastExternalSampleRef = useRef(-1)
@@ -129,6 +193,15 @@ export function NatureScene({
       frame.revision !== lastResolvedRevisionRef.current
 
     if (revisionChanged) {
+      getCelestialPresentation(
+        frame.source.dayPhase,
+        frame.target.dayPhase,
+        0,
+        aspect,
+        reducedMotion,
+        frozenCelestialSourceRef.current,
+        celestialPresentationRef.current,
+      )
       blendSeasonAppearance(
         seasonRef.current,
         seasonRef.current,
@@ -162,6 +235,27 @@ export function NatureScene({
       sourceInput.weather = frame.source.weather
       sourceInput.reducedMotion = reducedMotion
       deriveWeatherEffects(sourceInput, sourceEffectsRef.current)
+    }
+
+    getCelestialPresentation(
+      developmentCelestialOverride?.sourceDayPhase ?? frame.source.dayPhase,
+      developmentCelestialOverride?.targetDayPhase ?? frame.target.dayPhase,
+      developmentCelestialOverride?.progress ?? frame.progress,
+      aspect,
+      reducedMotion,
+      celestialPresentationRef.current,
+      frozenCelestialSourceRef.current,
+    )
+    if (import.meta.env.DEV && developmentCelestialOverride) {
+      const presentation = celestialPresentationRef.current
+      const sample = developmentCelestialSampleRef.current
+      sample.sun.x = presentation.sun.x
+      sample.sun.y = presentation.sun.y
+      sample.sun.opacity = presentation.sun.opacity
+      sample.moon.x = presentation.moon.x
+      sample.moon.y = presentation.moon.y
+      sample.moon.opacity = presentation.moon.opacity
+      ;(window as DevelopmentWindow).__livingMeadowCelestial = sample
     }
 
     getSeasonAppearance(frame.target, targetSeasonRef.current)
@@ -215,6 +309,7 @@ export function NatureScene({
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
+        celestialPresentationRef={celestialPresentationRef}
         effectsRef={effectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
