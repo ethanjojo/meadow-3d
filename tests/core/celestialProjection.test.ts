@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PerspectiveCamera, Vector3 } from 'three'
+import { getFixedCameraFraming } from '../../src/core/cameraFraming'
 import { getCelestialArcPoint } from '../../src/core/celestial'
 import { projectCelestialPoint } from '../../src/scene/celestialProjection'
 
@@ -14,8 +15,9 @@ describe('projectCelestialPoint', () => {
   ) => {
     const aspect = width / height
     const camera = new PerspectiveCamera(46, aspect, 0.1, 180)
-    camera.position.set(0, 1.08, 5.4)
-    camera.lookAt(0, 0.78, -5)
+    const framing = getFixedCameraFraming(aspect)
+    camera.position.set(...framing.position)
+    camera.lookAt(...framing.target)
     camera.updateProjectionMatrix()
     camera.updateMatrixWorld()
     const output = new Vector3()
