@@ -64,6 +64,7 @@ describe('shared environment state', () => {
         uSkyLightIntensity: { value: 0 },
         uSunIntensity: { value: 0 },
         uMoonIntensity: { value: 0 },
+        uLunarAmbient: { value: 0 },
         uFogColor: { value: new Color() },
         uFogDensity: { value: 0 },
       },
@@ -95,6 +96,9 @@ describe('shared environment state', () => {
     expect(material.uniforms.uSunIntensity.value).toBe(atmosphere.sunIntensity)
     expect(material.uniforms.uMoonIntensity.value).toBe(
       atmosphere.moonIntensity,
+    )
+    expect(material.uniforms.uLunarAmbient.value).toBe(
+      atmosphere.lunarAmbient,
     )
     expect(material.uniforms.uFogColor.value.getHex()).toBe(
       atmosphere.fogColor.getHex(),

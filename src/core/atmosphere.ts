@@ -25,11 +25,17 @@ export interface AtmosphereState {
   moonColor: Color
   skyLightColor: Color
   groundLightColor: Color
+  cloudLightColor: Color
+  cloudShadowColor: Color
   sunElevation: number
   sunAzimuth: number
   sunIntensity: number
   moonIntensity: number
   skyLightIntensity: number
+  solarScatter: number
+  twilight: number
+  lunarAmbient: number
+  cloudLightIntensity: number
   starOpacity: number
   sunVisibility: number
   moonVisibility: number
@@ -102,11 +108,17 @@ export function getAtmosphere(
     moonColor: new Color(),
     skyLightColor: new Color(),
     groundLightColor: new Color(),
+    cloudLightColor: new Color(),
+    cloudShadowColor: new Color(),
     sunElevation: 0,
     sunAzimuth: 0,
     sunIntensity: 0,
     moonIntensity: 0,
     skyLightIntensity: 0,
+    solarScatter: 0,
+    twilight: 0,
+    lunarAmbient: 0,
+    cloudLightIntensity: 0,
     starOpacity: 0,
     sunVisibility: 0,
     moonVisibility: 0,
@@ -120,7 +132,6 @@ export function getAtmosphere(
   const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
   const sunElevation = Math.sin(solarAngle)
   const daylight = smoothstep(-0.12, 0.18, sunElevation)
-  const twilight = 1 - Math.abs(clamp(sunElevation * 2.4, -1, 1))
   const celestial = getCelestialState(snapshot.dayPhase, state.celestial)
   const cloudOpacity = clamp(
     snapshot.weather.cloudCover * (0.72 + snapshot.weather.storm * 0.18),
@@ -142,6 +153,13 @@ export function getAtmosphere(
     celestial.moon.visibility *
     (1 - cloudOpacity * 0.68) *
     (1 - snapshot.weather.fog * 0.6)
+  const horizonProximity =
+    1 - smoothstep(0.02, 0.58, Math.abs(sunElevation))
+  const solarScatter = horizonProximity * celestial.sun.visibility
+  const twilight =
+    smoothstep(-0.24, 0.02, sunElevation) *
+    (1 - smoothstep(0.04, 0.35, sunElevation))
+  const lunarAmbient = (1 - daylight) * (0.12 + moonVisibility * 0.16)
 
   state.skyTop.copy(NIGHT_TOP).lerp(DAY_TOP, daylight)
   state.skyHorizon
@@ -165,16 +183,26 @@ export function getAtmosphere(
     .lerp(DAY_SKY_LIGHT, daylight)
     .lerp(WEATHER_SKY, skyDesaturation * 0.35)
   state.groundLightColor.copy(season.groundColor)
+  state.cloudLightColor
+    .copy(DAY_SKY_LIGHT)
+    .lerp(LOW_SUN, solarScatter * 0.82)
+  state.cloudShadowColor
+    .copy(WEATHER_SKY)
+    .multiplyScalar(0.42 + daylight * 0.18)
   state.sunElevation = sunElevation
   state.sunAzimuth = solarAngle
   state.sunIntensity = 0.05 + daylight * (0.65 + sunVisibility * 1.4)
   state.moonIntensity = 0.035 + (1 - daylight) * moonVisibility * 0.32
   state.skyLightIntensity = clamp(
-    0.38 + daylight * 0.32 - snapshot.weather.cloudCover * 0.08 -
-      snapshot.weather.fog * 0.05,
-    0.24,
-    0.7,
+    0.4 + daylight * 0.3 + lunarAmbient * 0.16 -
+      snapshot.weather.cloudCover * 0.08 - snapshot.weather.fog * 0.05,
+    0.4,
+    0.72,
   )
+  state.solarScatter = solarScatter
+  state.twilight = twilight
+  state.lunarAmbient = lunarAmbient
+  state.cloudLightIntensity = 0.22 + daylight * 0.48 + lunarAmbient * 0.32
   state.starOpacity = starOpacity
   state.sunVisibility = sunVisibility
   state.moonVisibility = moonVisibility
@@ -218,6 +246,12 @@ export function blendAtmosphere(
   output.groundLightColor
     .copy(source.groundLightColor)
     .lerp(target.groundLightColor, blend)
+  output.cloudLightColor
+    .copy(source.cloudLightColor)
+    .lerp(target.cloudLightColor, blend)
+  output.cloudShadowColor
+    .copy(source.cloudShadowColor)
+    .lerp(target.cloudShadowColor, blend)
 
   blendDirection(
     source.celestial.sun.direction,
@@ -259,6 +293,14 @@ export function blendAtmosphere(
   output.skyLightIntensity = mix(
     source.skyLightIntensity,
     target.skyLightIntensity,
+    blend,
+  )
+  output.solarScatter = mix(source.solarScatter, target.solarScatter, blend)
+  output.twilight = mix(source.twilight, target.twilight, blend)
+  output.lunarAmbient = mix(source.lunarAmbient, target.lunarAmbient, blend)
+  output.cloudLightIntensity = mix(
+    source.cloudLightIntensity,
+    target.cloudLightIntensity,
     blend,
   )
   output.starOpacity = mix(source.starOpacity, target.starOpacity, blend)

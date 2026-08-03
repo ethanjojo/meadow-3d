@@ -128,6 +128,7 @@ export const grassFragmentShader = /* glsl */ `
   uniform float uSkyLightIntensity;
   uniform float uSunIntensity;
   uniform float uMoonIntensity;
+  uniform float uLunarAmbient;
   uniform float uStormFlash;
   uniform sampler2D uGrassColorAtlas;
   uniform sampler2D uGrassSurfaceAtlas;
@@ -186,6 +187,7 @@ export const grassFragmentShader = /* glsl */ `
     float skyFacing = normal.y * 0.5 + 0.5;
     vec3 hemisphereFill =
       mix(uGroundLightColor, uSkyColor, skyFacing) * uSkyLightIntensity;
+    hemisphereFill += uMoonColor * uLunarAmbient * (0.1 + skyFacing * 0.08);
     vec3 light =
       hemisphereFill +
       uSunColor * sunFacing * uSunIntensity * 0.72 +
@@ -198,6 +200,9 @@ export const grassFragmentShader = /* glsl */ `
       pow(sunFacing, mix(14.0, 24.0, roughness)) *
       (0.18 + lowerBlade * 0.32);
     litColor += uSunColor * wetHighlight * uSunIntensity;
+    float moonWetHighlight =
+      uWetness * pow(moonFacing, 18.0) * uMoonIntensity * 0.12;
+    litColor += uMoonColor * moonWetHighlight;
     float backlight = max(dot(-normal, uSunDirection), 0.0);
     float transmission =
       uUseTransmission *

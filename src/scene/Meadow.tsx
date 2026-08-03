@@ -224,6 +224,7 @@ function createGrassMaterial(
       uSkyLightIntensity: { value: 0.7 },
       uSunIntensity: { value: 1.4 },
       uMoonIntensity: { value: 0.18 },
+      uLunarAmbient: { value: 0.12 },
       uStormFlash: { value: 0 },
       uGrassColorAtlas: { value: colorAtlas },
       uGrassSurfaceAtlas: { value: surfaceAtlas },

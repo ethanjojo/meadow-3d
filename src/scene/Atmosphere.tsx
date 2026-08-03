@@ -46,12 +46,26 @@ const skyFragmentShader = /* glsl */ `
   uniform vec3 uHorizonColor;
   uniform vec3 uSunDirection;
   uniform float uSunGlow;
+  uniform float uSolarScatter;
+  uniform float uTwilight;
+  uniform float uLunarAmbient;
   varying vec3 vWorldDirection;
 
   void main() {
     float height = smoothstep(-0.13, 0.72, vWorldDirection.y);
     vec3 color = mix(uHorizonColor, uTopColor, height);
-    float sunHalo = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 18.0);
+    float sunAlignment = max(
+      dot(vWorldDirection, normalize(uSunDirection)),
+      0.0
+    );
+    float sunHalo = pow(sunAlignment, 18.0);
+    float directionalScatter = pow(sunAlignment, 3.0);
+    float horizonBand = 1.0 - smoothstep(-0.04, 0.34, abs(vWorldDirection.y));
+    color += vec3(1.0, 0.42, 0.16) *
+      directionalScatter * horizonBand * uSolarScatter * 0.28;
+    color += vec3(0.12, 0.09, 0.16) *
+      horizonBand * uTwilight * (1.0 - directionalScatter) * 0.18;
+    color += vec3(0.035, 0.055, 0.09) * uLunarAmbient;
     color += vec3(1.0, 0.77, 0.46) * sunHalo * uSunGlow * 0.25;
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
@@ -166,6 +180,9 @@ export function Atmosphere({
           uHorizonColor: { value: new Color('#1b3041') },
           uSunDirection: { value: new Vector3(0.4, 0.8, -0.3).normalize() },
           uSunGlow: { value: 0 },
+          uSolarScatter: { value: 0 },
+          uTwilight: { value: 0 },
+          uLunarAmbient: { value: 0 },
         },
       }),
     [],
@@ -206,6 +223,9 @@ export function Atmosphere({
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)
     skyMaterial.uniforms.uSunDirection.value.set(...sunDirection)
     skyMaterial.uniforms.uSunGlow.value = state.sunHalo
+    skyMaterial.uniforms.uSolarScatter.value = state.solarScatter
+    skyMaterial.uniforms.uTwilight.value = state.twilight
+    skyMaterial.uniforms.uLunarAmbient.value = state.lunarAmbient
     starsMaterial.uniforms.uOpacity.value = state.starOpacity
     starsMaterial.uniforms.uTime.value = snapshot.autoElapsed
     gl.toneMappingExposure = state.exposure + effects.stormFlash * 0.06

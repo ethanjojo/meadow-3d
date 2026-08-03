@@ -13,6 +13,7 @@ import {
   type WeatherPreset,
 } from '../../src/core/simulation'
 import { syncGrassAtmosphereUniforms } from '../../src/scene/grassAtmosphere'
+import { grassFragmentShader } from '../../src/scene/grassShaders'
 
 function sampleAtDayPhase(dayPhase: number, weather: WeatherPreset = 'clear') {
   const snapshot = sampleNatureClock(DEFAULT_CLOCK.dayDuration * dayPhase)
@@ -46,6 +47,21 @@ describe('getAtmosphere', () => {
       expect(atmosphere.exposure).toBeGreaterThanOrEqual(0.55)
       expect(atmosphere.exposure).toBeLessThanOrEqual(1.15)
     }
+  })
+
+  it('keeps sunset directional, twilight continuous, and clear night readable', () => {
+    const sunset = sampleAtDayPhase(0.73, 'clear')
+    const afterSunset = sampleAtDayPhase(0.77, 'clear')
+    const night = sampleAtDayPhase(0, 'clear')
+
+    expect(sunset.solarScatter).toBeGreaterThan(0.45)
+    expect(afterSunset.twilight).toBeGreaterThan(0.15)
+    expect(night.lunarAmbient).toBeGreaterThanOrEqual(0.12)
+    expect(night.skyLightIntensity).toBeGreaterThanOrEqual(0.4)
+    expect(night.moonIntensity).toBeGreaterThanOrEqual(0.28)
+    expect(sunset.cloudLightColor.r).toBeGreaterThan(
+      sunset.cloudLightColor.b,
+    )
   })
 
   it('uses weather cover to dim stars and celestial halos coherently', () => {
@@ -132,6 +148,23 @@ describe('getAtmosphere', () => {
     expect(Math.hypot(...output.celestial.sun.direction)).toBeCloseTo(1)
   })
 
+  it('blends every new atmosphere field into reusable storage', () => {
+    const source = sampleAtDayPhase(0.73)
+    const target = sampleAtDayPhase(0)
+    const output = sampleAtDayPhase(0.5)
+    const cloudColor = output.cloudLightColor
+
+    blendAtmosphere(source, target, 0.5, output)
+
+    expect(output.cloudLightColor).toBe(cloudColor)
+    expect(output.solarScatter).toBeCloseTo(
+      (source.solarScatter + target.solarScatter) / 2,
+    )
+    expect(output.lunarAmbient).toBeCloseTo(
+      (source.lunarAmbient + target.lunarAmbient) / 2,
+    )
+  })
+
   it('synchronizes complete hemisphere, sun, and moon grass lighting', () => {
     const atmosphere = sampleAtDayPhase(0.5, 'storm')
     const material = new ShaderMaterial({
@@ -145,6 +178,7 @@ describe('getAtmosphere', () => {
         uSkyLightIntensity: { value: 0 },
         uSunIntensity: { value: 0 },
         uMoonIntensity: { value: 0 },
+        uLunarAmbient: { value: 0 },
         uFogColor: { value: new Color() },
         uFogDensity: { value: 0 },
       },
@@ -168,5 +202,9 @@ describe('getAtmosphere', () => {
     expect(material.uniforms.uMoonIntensity.value).toBe(
       atmosphere.moonIntensity,
     )
+    expect(material.uniforms.uLunarAmbient.value).toBe(
+      atmosphere.lunarAmbient,
+    )
+    expect(grassFragmentShader).toContain('moonWetHighlight')
   })
 })
