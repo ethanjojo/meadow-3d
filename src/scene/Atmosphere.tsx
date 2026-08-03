@@ -16,6 +16,7 @@ import { getCelestialState } from '../core/celestial'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
+import type { WeatherEffects } from '../core/weather'
 import { CelestialBodies } from './CelestialBodies'
 import { CloudLayer } from './CloudLayer'
 import { ShootingStars } from './ShootingStars'
@@ -24,6 +25,7 @@ interface AtmosphereProps {
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
+  effectsRef: MutableRefObject<WeatherEffects>
   reducedMotion: boolean
   visible: boolean
 }
@@ -120,6 +122,7 @@ export function Atmosphere({
   quality,
   snapshotRef,
   seasonRef,
+  effectsRef,
   reducedMotion,
   visible,
 }: AtmosphereProps) {
@@ -195,6 +198,7 @@ export function Atmosphere({
 
     const snapshot = snapshotRef.current
     const state = getAtmosphere(snapshot, seasonRef.current)
+    const effects = effectsRef.current
     atmosphereRef.current = state
     const celestial = getCelestialState(snapshot.dayPhase)
     const sunDirection = celestial.sun.direction
@@ -206,7 +210,7 @@ export function Atmosphere({
     skyMaterial.uniforms.uSunGlow.value = state.sunHalo
     starsMaterial.uniforms.uOpacity.value = state.starOpacity
     starsMaterial.uniforms.uTime.value = snapshot.autoElapsed
-    gl.toneMappingExposure = state.exposure
+    gl.toneMappingExposure = state.exposure + effects.stormFlash * 0.06
 
     if (fogRef.current) {
       fogRef.current.color.copy(state.fogColor)
@@ -214,7 +218,7 @@ export function Atmosphere({
     }
     if (sunRef.current) {
       sunRef.current.position.set(...sunDirection).multiplyScalar(78)
-      sunRef.current.intensity = state.sunIntensity
+      sunRef.current.intensity = state.sunIntensity + effects.stormFlash * 0.22
       sunRef.current.color.set(state.sunElevation < 0.35 ? '#ffd09a' : '#fff2cf')
     }
     if (moonRef.current) {

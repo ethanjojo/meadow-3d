@@ -10,8 +10,10 @@ import { getSeasonAppearance } from '../core/season'
 import {
   createEnvironmentSnapshot,
   stepEnvironment,
+  type EnvironmentSnapshot,
   type SimulationSettings,
 } from '../core/simulation'
+import { deriveWeatherEffects } from '../core/weather'
 import { Atmosphere } from './Atmosphere'
 import { FixedCamera } from './FixedCamera'
 import { Meadow } from './Meadow'
@@ -22,7 +24,7 @@ interface NatureSceneProps {
   reducedMotion: boolean
   visible: boolean
   recordFrame?: (deltaSeconds: number) => void
-  onNatureSample?: (snapshot: NatureSnapshot) => void
+  onNatureSample?: (snapshot: EnvironmentSnapshot) => void
   simulationSettings: SimulationSettings
 }
 
@@ -48,6 +50,14 @@ export function NatureScene({
   )
   const snapshotRef = useRef(initialSnapshot)
   const seasonRef = useRef(getSeasonAppearance(initialSnapshot))
+  const effectsInputRef = useRef({
+    elapsed: initialSnapshot.elapsed,
+    dayPhase: initialSnapshot.dayPhase,
+    seasonPosition: initialSnapshot.seasonPosition,
+    weather: initialSnapshot.weather,
+    reducedMotion,
+  })
+  const effectsRef = useRef(deriveWeatherEffects(effectsInputRef.current))
   const activeElapsedRef = useRef(0)
   const lastExternalSampleRef = useRef(-1)
 
@@ -68,6 +78,13 @@ export function NatureScene({
     )
     snapshotRef.current = snapshot
     seasonRef.current = getSeasonAppearance(snapshot)
+    const effectsInput = effectsInputRef.current
+    effectsInput.elapsed = snapshot.elapsed
+    effectsInput.dayPhase = snapshot.dayPhase
+    effectsInput.seasonPosition = snapshot.seasonPosition
+    effectsInput.weather = snapshot.weather
+    effectsInput.reducedMotion = reducedMotion
+    deriveWeatherEffects(effectsInput, effectsRef.current)
     recordFrame?.(delta)
 
     if (
@@ -85,6 +102,7 @@ export function NatureScene({
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
+        effectsRef={effectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
       />
@@ -92,11 +110,13 @@ export function NatureScene({
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
+        effectsRef={effectsRef}
       />
       <WeatherParticles
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
+        effectsRef={effectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
       />

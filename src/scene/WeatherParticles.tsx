@@ -6,16 +6,18 @@ import {
   BufferGeometry,
   Color,
   ShaderMaterial,
+  Vector2,
 } from 'three'
-import type { NatureSnapshot } from '../core/natureClock'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
-import { getWeatherOpacity } from '../core/weather'
+import type { EnvironmentSnapshot } from '../core/simulation'
+import type { WeatherEffects } from '../core/weather'
 
 interface WeatherParticlesProps {
   quality: QualityProfile
-  snapshotRef: MutableRefObject<NatureSnapshot>
+  snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
+  effectsRef: MutableRefObject<WeatherEffects>
   reducedMotion: boolean
   visible: boolean
 }
@@ -24,28 +26,38 @@ const particleVertexShader = /* glsl */ `
   uniform float uTime;
   uniform float uKind;
   uniform float uPointSize;
-  uniform float uWind;
+  uniform float uWindStrength;
+  uniform float uFallSpeed;
+  uniform vec2 uWindDirection;
   varying float vFade;
+  varying float vPulse;
 
   void main() {
     vec3 animated = position;
     if (uKind < 0.5) {
-      animated.y = mod(position.y, 3.6) - 0.25;
-      animated.x += sin(position.y * 1.7 + uTime * 0.38 + position.z) * (0.18 + uWind * 0.32);
+      animated.y = mod(position.y + uTime * uFallSpeed, 3.6) - 0.25;
+      animated.xz += uWindDirection * uWindStrength * 0.18;
+      animated.x += sin(position.y * 1.7 + uTime * 0.38 + position.z) * (0.18 + uWindStrength * 0.32);
       animated.y += sin(position.x * 0.5 + uTime * 0.62) * 0.22;
     } else if (uKind < 1.5) {
-      animated.y = mod(position.y + 3.0 - uTime * 8.0, 15.0) - 2.0;
-      animated.x += uWind * 0.85 * (12.0 - animated.y) / 14.0;
-    } else {
-      animated.y = mod(position.y + 3.0 - uTime * 0.7, 15.0) - 2.0;
-      animated.x += sin(uTime * 0.42 + position.y * 1.6) * (0.45 + uWind * 0.4);
+      animated.y = mod(position.y + 3.0 - uTime * uFallSpeed, 15.0) - 2.0;
+      animated.xz += uWindDirection * uWindStrength * 0.85 * (12.0 - animated.y) / 14.0;
+    } else if (uKind < 2.5) {
+      animated.y = mod(position.y + 3.0 - uTime * uFallSpeed, 15.0) - 2.0;
+      animated.xz += uWindDirection * uWindStrength * 0.24;
+      animated.x += sin(uTime * 0.42 + position.y * 1.6) * (0.45 + uWindStrength * 0.4);
       animated.z += cos(uTime * 0.31 + position.x) * 0.28;
+    } else {
+      animated.y = mod(position.y, 1.85) + 0.12;
+      animated.x += sin(uTime * 0.54 + position.z * 1.8) * 0.36;
+      animated.z += cos(uTime * 0.47 + position.x * 1.4) * 0.3;
     }
 
     vec4 viewPosition = modelViewMatrix * vec4(animated, 1.0);
     gl_Position = projectionMatrix * viewPosition;
     gl_PointSize = uPointSize * clamp(18.0 / -viewPosition.z, 0.45, 2.2);
     vFade = smoothstep(-2.0, 1.0, animated.y) * smoothstep(13.0, 9.0, animated.y);
+    vPulse = uKind > 2.5 ? 0.52 + 0.48 * sin(uTime * 2.1 + position.x * 3.7 + position.z) : 1.0;
   }
 `
 
@@ -54,6 +66,7 @@ const particleFragmentShader = /* glsl */ `
   uniform float uOpacity;
   uniform float uKind;
   varying float vFade;
+  varying float vPulse;
 
   void main() {
     vec2 centered = gl_PointCoord - 0.5;
@@ -64,7 +77,7 @@ const particleFragmentShader = /* glsl */ `
       shape = smoothstep(0.5, 0.08, length(centered));
     }
     if (shape < 0.02) discard;
-    gl_FragColor = vec4(uColor, shape * uOpacity * vFade);
+    gl_FragColor = vec4(uColor, shape * uOpacity * vFade * vPulse);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -90,7 +103,12 @@ function createParticleGeometry(count: number) {
   return geometry
 }
 
-function createParticleMaterial(kind: number, color: string, size: number) {
+function createParticleMaterial(
+  kind: number,
+  color: string,
+  size: number,
+  fallSpeed: number,
+) {
   return new ShaderMaterial({
     vertexShader: particleVertexShader,
     fragmentShader: particleFragmentShader,
@@ -101,7 +119,9 @@ function createParticleMaterial(kind: number, color: string, size: number) {
       uTime: { value: 0 },
       uKind: { value: kind },
       uPointSize: { value: size },
-      uWind: { value: 0.5 },
+      uWindStrength: { value: 0.5 },
+      uFallSpeed: { value: fallSpeed },
+      uWindDirection: { value: new Vector2(0.86, 0.5).normalize() },
       uColor: { value: new Color(color) },
       uOpacity: { value: 0 },
     },
@@ -112,6 +132,7 @@ export function WeatherParticles({
   quality,
   snapshotRef,
   seasonRef,
+  effectsRef,
   reducedMotion,
   visible,
 }: WeatherParticlesProps) {
@@ -121,9 +142,10 @@ export function WeatherParticles({
   )
   const materials = useMemo(
     () => [
-      createParticleMaterial(0, '#d8c279', 1.2),
-      createParticleMaterial(1, '#a8cce2', 4.6),
-      createParticleMaterial(2, '#edf4f2', 5.6),
+      createParticleMaterial(0, '#d8c279', 1.2, 0.08),
+      createParticleMaterial(1, '#a8cce2', 4.6, 8),
+      createParticleMaterial(2, '#edf4f2', 5.6, 0.7),
+      createParticleMaterial(3, '#d9ed72', 3.8, 0),
     ],
     [],
   )
@@ -147,14 +169,19 @@ export function WeatherParticles({
     if (!visible) return
 
     const snapshot = snapshotRef.current
-    const opacity = getWeatherOpacity(snapshot, seasonRef.current)
-    const opacities = [opacity.pollen, opacity.rain, opacity.snow]
+    const effects = effectsRef.current
 
     for (let index = 0; index < materials.length; index += 1) {
       materials[index].uniforms.uTime.value = snapshot.elapsed
-      materials[index].uniforms.uWind.value = snapshot.windStrength
-      materials[index].uniforms.uOpacity.value = opacities[index]
+      materials[index].uniforms.uWindStrength.value = snapshot.weather.windStrength
+      materials[index].uniforms.uWindDirection.value
+        .set(...snapshot.weather.windDirection)
+        .normalize()
     }
+    materials[0].uniforms.uOpacity.value = effects.pollen * seasonRef.current.pollen
+    materials[1].uniforms.uOpacity.value = effects.rain
+    materials[2].uniforms.uOpacity.value = effects.snow
+    materials[3].uniforms.uOpacity.value = effects.fireflies
   })
 
   return (

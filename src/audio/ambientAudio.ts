@@ -1,8 +1,8 @@
-import type { NatureSnapshot } from '../core/natureClock'
+import type { EnvironmentSnapshot } from '../core/simulation'
 
 export interface AmbientAudioController {
   start: () => Promise<boolean>
-  setNature: (snapshot: NatureSnapshot) => void
+  setNature: (snapshot: EnvironmentSnapshot) => void
   suspend: () => Promise<void>
   resume: () => Promise<void>
   dispose: () => Promise<void>
@@ -17,9 +17,13 @@ export function createAmbientAudio(): AmbientAudioController {
   let windSource: AudioBufferSourceNode | null = null
   let windFilter: BiquadFilterNode | null = null
   let windGain: GainNode | null = null
+  let rainSource: AudioBufferSourceNode | null = null
+  let rainFilter: BiquadFilterNode | null = null
+  let rainGain: GainNode | null = null
+  let nightGain: GainNode | null = null
   let lfo: OscillatorNode | null = null
   let chirpTimer: number | null = null
-  let latestSnapshot: NatureSnapshot | null = null
+  let latestSnapshot: EnvironmentSnapshot | null = null
 
   const createChirp = () => {
     if (!context || context.state !== 'running' || !latestSnapshot) return
@@ -37,7 +41,7 @@ export function createAmbientAudio(): AmbientAudioController {
     gain.gain.setValueAtTime(0.0001, startTime)
     gain.gain.exponentialRampToValueAtTime(daylight ? 0.012 : 0.004, startTime + 0.025)
     gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.22)
-    oscillator.connect(gain).connect(context.destination)
+    oscillator.connect(gain).connect(nightGain ?? context.destination)
     oscillator.start(startTime)
     oscillator.stop(startTime + 0.24)
   }
@@ -61,6 +65,10 @@ export function createAmbientAudio(): AmbientAudioController {
     windSource = context.createBufferSource()
     windFilter = context.createBiquadFilter()
     windGain = context.createGain()
+    rainSource = context.createBufferSource()
+    rainFilter = context.createBiquadFilter()
+    rainGain = context.createGain()
+    nightGain = context.createGain()
     lfo = context.createOscillator()
     const lfoGain = context.createGain()
 
@@ -69,12 +77,21 @@ export function createAmbientAudio(): AmbientAudioController {
     windFilter.type = 'lowpass'
     windFilter.frequency.value = 720
     windGain.gain.value = 0.022
+    rainSource.buffer = noiseBuffer
+    rainSource.loop = true
+    rainFilter.type = 'highpass'
+    rainFilter.frequency.value = 1_650
+    rainGain.gain.value = 0
+    nightGain.gain.value = 0
+    nightGain.connect(context.destination)
     lfo.frequency.value = 0.085
     lfoGain.gain.value = 0.008
 
     windSource.connect(windFilter).connect(windGain).connect(context.destination)
+    rainSource.connect(rainFilter).connect(rainGain).connect(context.destination)
     lfo.connect(lfoGain).connect(windGain.gain)
     windSource.start()
+    rainSource.start()
     lfo.start()
     chirpTimer = window.setInterval(createChirp, 4_600)
     return true
@@ -101,9 +118,23 @@ export function createAmbientAudio(): AmbientAudioController {
         0.35,
       )
       windFilter.frequency.setTargetAtTime(
-        420 + snapshot.windStrength * 1_150,
+        420 + snapshot.weather.windStrength * 1_150,
         now,
         0.45,
+      )
+      rainGain?.gain.setTargetAtTime(
+        snapshot.weather.rain * 0.032 + snapshot.weather.storm * 0.012,
+        now,
+        0.28,
+      )
+      const solarHeight = Math.sin(snapshot.dayPhase * Math.PI * 2 - Math.PI / 2)
+      const night = Math.min(1, Math.max(0, -solarHeight * 1.8))
+      nightGain?.gain.setTargetAtTime(
+        night *
+          (0.25 + snapshot.weather.fireflies * 0.75) *
+          (1 - snapshot.weather.rain * 0.82),
+        now,
+        0.5,
       )
     },
 
@@ -120,6 +151,7 @@ export function createAmbientAudio(): AmbientAudioController {
       chirpTimer = null
       try {
         windSource?.stop()
+        rainSource?.stop()
         lfo?.stop()
       } catch {
         // Nodes may already be stopped by a closed AudioContext.
@@ -127,6 +159,10 @@ export function createAmbientAudio(): AmbientAudioController {
       windSource?.disconnect()
       windFilter?.disconnect()
       windGain?.disconnect()
+      rainSource?.disconnect()
+      rainFilter?.disconnect()
+      rainGain?.disconnect()
+      nightGain?.disconnect()
       lfo?.disconnect()
       if (context && context.state !== 'closed') await context.close()
       context = null

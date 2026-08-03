@@ -8,6 +8,20 @@ export interface WeatherOpacity {
   snow: number
 }
 
+export interface WeatherEffects extends WeatherOpacity {
+  fireflies: number
+  dew: number
+  stormFlash: number
+}
+
+interface WeatherEffectInput {
+  elapsed: number
+  dayPhase: number
+  seasonPosition: number
+  weather: WeatherState
+  reducedMotion: boolean
+}
+
 type WeatherProfile = Readonly<
   Omit<WeatherState, 'windDirection'>
 > & {
@@ -106,6 +120,63 @@ function mix(from: number, to: number, amount: number) {
 function smoothstep(minimum: number, maximum: number, value: number) {
   const amount = clamp01((value - minimum) / (maximum - minimum))
   return amount * amount * (3 - 2 * amount)
+}
+
+function circularDistance(from: number, to: number, period: number) {
+  const distance = Math.abs(((from - to + period / 2) % period + period) % period - period / 2)
+  return distance
+}
+
+export function deriveWeatherEffects({
+  elapsed,
+  dayPhase,
+  seasonPosition,
+  weather,
+  reducedMotion,
+}: WeatherEffectInput, target?: WeatherEffects): WeatherEffects {
+  const solarAngle = dayPhase * Math.PI * 2 - Math.PI / 2
+  const daylight = smoothstep(-0.05, 0.18, Math.sin(solarAngle))
+  const night = 1 - smoothstep(-0.2, 0.05, Math.sin(solarAngle))
+  const summer = 1 - smoothstep(0.32, 0.72, circularDistance(seasonPosition, 1, 4))
+  const winter = 1 - smoothstep(0.42, 0.82, circularDistance(seasonPosition, 3, 4))
+  const spring = 1 - smoothstep(0.45, 1.15, circularDistance(seasonPosition, 0, 4))
+  const precipitation = clamp01(weather.rain + weather.snow)
+  const calm = 1 - smoothstep(0.38, 0.72, weather.windStrength)
+  const fairWeather =
+    (1 - smoothstep(0.62, 0.78, weather.cloudCover)) *
+    (1 - precipitation) *
+    (1 - clamp01(weather.storm))
+  const dawn = 1 - smoothstep(0.035, 0.13, circularDistance(dayPhase, 0.25, 1))
+  const safeElapsed = Number.isFinite(elapsed) ? elapsed : 0
+  const flashPhase = ((safeElapsed % 13.7) + 13.7) % 13.7
+  const firstFlash = 1 - smoothstep(0, 0.11, Math.abs(flashPhase - 1.15))
+  const secondFlash = 1 - smoothstep(0, 0.08, Math.abs(flashPhase - 1.48))
+
+  const effects = target ?? {
+    pollen: 0,
+    rain: 0,
+    snow: 0,
+    fireflies: 0,
+    dew: 0,
+    stormFlash: 0,
+  }
+  effects.pollen = clamp01(
+      (spring * 0.82 + summer * 0.34) *
+        daylight *
+        (1 - precipitation) *
+        (1 - weather.cloudCover * 0.55),
+    )
+  effects.rain = clamp01(weather.rain)
+  effects.snow = clamp01(weather.snow * winter)
+  effects.fireflies = clamp01(
+    weather.fireflies * summer * night * calm * fairWeather *
+      (reducedMotion ? 0.35 : 1),
+  )
+  effects.dew = clamp01(weather.dew * dawn * (1 - precipitation))
+  effects.stormFlash = reducedMotion
+    ? 0
+    : clamp01(weather.storm * Math.max(firstFlash, secondFlash * 0.72))
+  return effects
 }
 
 export function getWeatherProfile(preset: WeatherPreset): WeatherState {

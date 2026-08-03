@@ -3,6 +3,9 @@ import { getCelestialState } from './celestial'
 import type { SeasonAppearance } from './season'
 import type { EnvironmentSnapshot } from './simulation'
 
+const WEATHER_SKY = new Color('#53616a')
+const WEATHER_HORIZON = new Color('#7f8582')
+
 export interface AtmosphereState {
   skyTop: Color
   skyHorizon: Color
@@ -83,6 +86,15 @@ export function getAtmosphere(
   const skyHorizon = nightHorizon
     .lerp(dayHorizon, daylight)
     .lerp(sunset, twilight * (1 - Math.abs(daylight - 0.5) * 1.5) * 0.34)
+  const skyDesaturation = clamp(
+    snapshot.weather.cloudCover * 0.18 +
+      snapshot.weather.fog * 0.22 +
+      snapshot.weather.storm * 0.24,
+    0,
+    0.52,
+  )
+  skyTop.lerp(WEATHER_SKY, skyDesaturation)
+  skyHorizon.lerp(WEATHER_HORIZON, skyDesaturation * 0.72)
   const fogColor = skyHorizon.clone().lerp(season.groundColor, 0.14)
 
   return {
@@ -109,6 +121,11 @@ export function getAtmosphere(
       0.002,
       0.04,
     ),
-    exposure: clamp(0.6 + daylight * 0.48, 0.55, 1.15),
+    exposure: clamp(
+      0.6 + daylight * 0.48 - snapshot.weather.cloudCover * 0.1 -
+        snapshot.weather.fog * 0.04 - snapshot.weather.storm * 0.08,
+      0.55,
+      1.15,
+    ),
   }
 }

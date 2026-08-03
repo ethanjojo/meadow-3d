@@ -22,12 +22,14 @@ import {
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
+import type { WeatherEffects } from '../core/weather'
 import { grassFragmentShader, grassVertexShader } from './grassShaders'
 
 interface MeadowProps {
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
+  effectsRef: MutableRefObject<WeatherEffects>
 }
 
 interface GrassLayerDefinition {
@@ -183,7 +185,12 @@ function createGrassMaterial(layerFade: number) {
   })
 }
 
-export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
+export function Meadow({
+  quality,
+  snapshotRef,
+  seasonRef,
+  effectsRef,
+}: MeadowProps) {
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
   const layers = useMemo(() => {
     const budgets = getGrassLayerBudgets(quality.grassBlades)
@@ -213,7 +220,8 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
     const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
     const sunHeight = Math.sin(solarAngle)
     const daylight = Math.min(1, Math.max(0.08, sunHeight * 0.75 + 0.34))
-    const wetness = Math.max(snapshot.weather.wetness, snapshot.weather.dew * 0.45)
+    const effects = effectsRef.current
+    const wetness = Math.max(snapshot.weather.wetness, effects.dew * 0.45)
 
     for (const layer of layers) {
       const { uniforms } = layer.material

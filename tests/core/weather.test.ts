@@ -4,6 +4,7 @@ import type { NatureSnapshot } from '../../src/core/natureClock'
 import type { SeasonAppearance } from '../../src/core/season'
 import {
   blendWeather,
+  deriveWeatherEffects,
   getAutomaticWeather,
   getWeatherOpacity,
   getWeatherProfile,
@@ -93,5 +94,54 @@ describe('getWeatherOpacity', () => {
 
     expect(weather.snow).toBeGreaterThan(0)
     expect(weather.rain).toBe(0)
+  })
+
+  it('allows fireflies only on calm summer nights', () => {
+    const summerNight = deriveWeatherEffects({
+      elapsed: 120,
+      dayPhase: 0,
+      seasonPosition: 1,
+      weather: getWeatherProfile('clear'),
+      reducedMotion: false,
+    })
+    const winterNight = deriveWeatherEffects({
+      elapsed: 120,
+      dayPhase: 0,
+      seasonPosition: 3,
+      weather: getWeatherProfile('clear'),
+      reducedMotion: false,
+    })
+    expect(summerNight.fireflies).toBeGreaterThan(0)
+    expect(winterNight.fireflies).toBe(0)
+  })
+
+  it('forms dew at a clear dawn after low precipitation', () => {
+    const dawn = deriveWeatherEffects({
+      elapsed: 120,
+      dayPhase: 0.24,
+      seasonPosition: 1,
+      weather: getWeatherProfile('clear'),
+      reducedMotion: false,
+    })
+    const rainyDawn = deriveWeatherEffects({
+      elapsed: 120,
+      dayPhase: 0.24,
+      seasonPosition: 1,
+      weather: getWeatherProfile('rain'),
+      reducedMotion: false,
+    })
+    expect(dawn.dew).toBeGreaterThan(0)
+    expect(rainyDawn.dew).toBe(0)
+  })
+
+  it('suppresses fast storm flashes for reduced motion', () => {
+    const effects = deriveWeatherEffects({
+      elapsed: 120,
+      dayPhase: 0.4,
+      seasonPosition: 1,
+      weather: getWeatherProfile('storm'),
+      reducedMotion: true,
+    })
+    expect(effects.stormFlash).toBe(0)
   })
 })
