@@ -4,9 +4,15 @@ export const grassVertexShader = /* glsl */ `
   attribute float instancePhase;
   attribute float instanceStiffness;
   attribute float instanceYaw;
+  attribute float instanceWidth;
+  attribute float instanceLean;
+  attribute float instanceColorVariation;
 
   uniform float uTime;
   uniform float uWindStrength;
+  uniform vec2 uWindDirection;
+  uniform vec2 uGustOrigin;
+  uniform float uGustSpeed;
 
   varying float vHeight;
   varying float vVariation;
@@ -21,43 +27,48 @@ export const grassVertexShader = /* glsl */ `
 
   void main() {
     float heightRatio = clamp(position.y, 0.0, 1.0);
-    float rootLock = heightRatio * heightRatio;
+    float tipInfluence = heightRatio * heightRatio * heightRatio;
     vec3 localPosition = position;
     localPosition.y *= instanceScale;
-    localPosition.x *= mix(0.82, 1.15, instanceScale - 0.65);
+    localPosition.xz *= instanceWidth;
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 
+    vec2 windDirection = normalize(uWindDirection + vec2(0.0001));
+    vec2 relativePosition = instanceOffset.xz - uGustOrigin;
+    float flowPosition = dot(relativePosition, windDirection);
     float broadWave = sin(
-      instanceOffset.x * 0.115 +
-      instanceOffset.z * 0.062 +
-      uTime * 0.72 +
-      instancePhase
+      flowPosition * 0.16 - uTime * (0.42 + uWindStrength * 0.42) + instancePhase
     );
-    float travelingGust = sin(
-      dot(instanceOffset.xz, vec2(0.075, 0.13)) -
-      uTime * 0.47 +
-      sin(instanceOffset.x * 0.035 + uTime * 0.13) * 1.8
+    float gustPosition = mod(flowPosition - uTime * uGustSpeed + 36.0, 72.0) - 36.0;
+    float gustFront =
+      smoothstep(-5.5, -0.8, gustPosition) *
+      (1.0 - smoothstep(0.8, 6.5, gustPosition));
+    float crossWave = sin(
+      dot(relativePosition, vec2(-windDirection.y, windDirection.x)) * 0.28 +
+      uTime * 0.31 +
+      instancePhase * 0.7
     );
-    float turbulence =
-      sin(instanceOffset.x * 0.51 - uTime * 1.37 + instancePhase) * 0.55 +
-      sin(instanceOffset.z * 0.67 + uTime * 1.11) * 0.45;
     float flexibility = 1.0 - instanceStiffness * 0.62;
     float bend =
-      (broadWave * 0.34 + travelingGust * 0.5 + turbulence * 0.16) *
-      (0.12 + uWindStrength * 0.58) *
+      (broadWave * 0.42 + gustFront * (0.48 + crossWave * 0.18)) *
+      (0.11 + uWindStrength * 0.56) *
       flexibility;
 
-    localPosition.x += bend * rootLock * 0.42;
-    localPosition.z += bend * rootLock * instanceScale;
+    localPosition.x += instanceLean * tipInfluence * instanceScale;
+    localPosition.xz += windDirection * bend * tipInfluence * instanceScale;
 
     vec4 worldPosition = modelMatrix * vec4(localPosition + instanceOffset, 1.0);
     vec4 viewPosition = viewMatrix * worldPosition;
     gl_Position = projectionMatrix * viewPosition;
 
     vHeight = heightRatio;
-    vVariation = fract(sin(dot(instanceOffset.xz, vec2(12.9898, 78.233))) * 43758.5453);
+    vVariation = instanceColorVariation;
     vViewDepth = -viewPosition.z;
-    vBladeNormal = normalize(vec3(-bend * 0.38, 1.0, 0.18));
+    vBladeNormal = normalize(vec3(
+      -windDirection.x * bend * 0.5 - instanceLean * 0.24,
+      1.0,
+      -windDirection.y * bend * 0.5
+    ));
   }
 `
 
@@ -71,7 +82,10 @@ export const grassFragmentShader = /* glsl */ `
   uniform vec3 uSunDirection;
   uniform vec3 uFogColor;
   uniform float uDryness;
+  uniform float uWetness;
+  uniform float uFrost;
   uniform float uSnowCoverage;
+  uniform float uLayerFade;
   uniform float uFogNear;
   uniform float uFogFar;
 
@@ -83,17 +97,27 @@ export const grassFragmentShader = /* glsl */ `
   void main() {
     vec3 freshColor = mix(uGrassBase, uGrassTip, smoothstep(0.05, 1.0, vHeight));
     vec3 grassColor = mix(freshColor, uDryColor, uDryness * (0.35 + vHeight * 0.65));
+    grassColor *= mix(0.86, 1.1, vVariation);
+
+    float lowerBlade = 1.0 - smoothstep(0.12, 0.82, vHeight);
+    float wetDarkening = uWetness * (0.16 + lowerBlade * 0.28);
+    grassColor *= 1.0 - wetDarkening;
+
+    float frost = uFrost * smoothstep(0.62, 0.98, vHeight);
     float snow = uSnowCoverage * smoothstep(0.42, 0.96, vHeight);
+    grassColor = mix(grassColor, uSnowColor * 0.88, frost * 0.48);
     grassColor = mix(grassColor, uSnowColor, snow);
-    grassColor *= mix(0.88, 1.09, vVariation);
 
     vec3 normal = normalize(vBladeNormal);
     float sunFacing = max(dot(normal, normalize(uSunDirection)), 0.0);
     float skyFacing = normal.y * 0.5 + 0.5;
     vec3 light = uSkyColor * (0.38 + skyFacing * 0.34) + uSunColor * sunFacing * 0.72;
     vec3 litColor = grassColor * light;
+    float wetHighlight = uWetness * pow(sunFacing, 18.0) * (0.18 + lowerBlade * 0.32);
+    litColor += uSunColor * wetHighlight;
 
     float fogAmount = smoothstep(uFogNear, uFogFar, vViewDepth);
+    fogAmount = mix(fogAmount, 1.0, 1.0 - uLayerFade);
     gl_FragColor = vec4(mix(litColor, uFogColor, fogAmount), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

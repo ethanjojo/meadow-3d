@@ -48,4 +48,22 @@ describe('quality selection', () => {
       QUALITY_PROFILES.high.maxDpr,
     )
   })
+
+  it('scales explicit atmospheric budgets with the quality tier', () => {
+    expect(QUALITY_PROFILES.low).toMatchObject({
+      cloudLayers: 1,
+      starCount: 700,
+      shootingStarPool: 1,
+    })
+    expect(QUALITY_PROFILES.medium).toMatchObject({
+      cloudLayers: 2,
+      starCount: 1_300,
+      shootingStarPool: 2,
+    })
+    expect(QUALITY_PROFILES.high).toMatchObject({
+      cloudLayers: 3,
+      starCount: 2_000,
+      shootingStarPool: 3,
+    })
+  })
 })

@@ -7,9 +7,13 @@ import {
 } from '../core/natureClock'
 import { QUALITY_PROFILES, type QualityTier } from '../core/quality'
 import { getSeasonAppearance } from '../core/season'
-import type { SimulationSettings } from '../core/simulation'
+import {
+  createEnvironmentSnapshot,
+  stepEnvironment,
+  type SimulationSettings,
+} from '../core/simulation'
 import { Atmosphere } from './Atmosphere'
-import { CinematicCamera } from './CinematicCamera'
+import { FixedCamera } from './FixedCamera'
 import { Meadow } from './Meadow'
 import { WeatherParticles } from './WeatherParticles'
 
@@ -30,11 +34,17 @@ export function NatureScene({
   visible,
   recordFrame,
   onNatureSample,
+  simulationSettings,
 }: NatureSceneProps) {
   const quality = QUALITY_PROFILES[qualityTier]
-  const initialSnapshot = useMemo(
+  const initialAutoSnapshot = useMemo(
     () => sampleNatureClock(DAY_START_OFFSET, DEFAULT_CLOCK),
     [],
+  )
+  const initialSettingsRef = useRef(simulationSettings)
+  const initialSnapshot = useMemo(
+    () => createEnvironmentSnapshot(initialAutoSnapshot, initialSettingsRef.current),
+    [initialAutoSnapshot],
   )
   const snapshotRef = useRef(initialSnapshot)
   const seasonRef = useRef(getSeasonAppearance(initialSnapshot))
@@ -46,9 +56,15 @@ export function NatureScene({
 
     const safeDelta = Math.min(delta, 0.1)
     activeElapsedRef.current += safeDelta
-    const snapshot = sampleNatureClock(
+    const autoSnapshot = sampleNatureClock(
       activeElapsedRef.current + DAY_START_OFFSET,
       DEFAULT_CLOCK,
+    )
+    const snapshot = stepEnvironment(
+      snapshotRef.current,
+      autoSnapshot,
+      simulationSettings,
+      safeDelta,
     )
     snapshotRef.current = snapshot
     seasonRef.current = getSeasonAppearance(snapshot)
@@ -83,7 +99,7 @@ export function NatureScene({
         reducedMotion={reducedMotion}
         visible={visible}
       />
-      <CinematicCamera reducedMotion={reducedMotion} visible={visible} />
+      <FixedCamera />
     </>
   )
 }

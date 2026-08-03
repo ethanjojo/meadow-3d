@@ -108,7 +108,7 @@ export function App() {
         <SceneErrorBoundary fallback={fallback}>
           <Canvas
             data-testid="nature-canvas"
-            camera={{ position: [0, 1.15, 5.4], fov: 48, near: 0.1, far: 180 }}
+            camera={{ position: [0, 1.08, 5.4], fov: 46, near: 0.1, far: 180 }}
             dpr={[1, quality.maxDpr]}
             shadows={quality.shadowSize > 0 ? 'percentage' : false}
             gl={{

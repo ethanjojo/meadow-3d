@@ -1,8 +1,8 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
-  Color,
   CircleGeometry,
+  Color,
   DoubleSide,
   Float32BufferAttribute,
   InstancedBufferAttribute,
@@ -10,25 +10,47 @@ import {
   MeshStandardMaterial,
   ShaderMaterial,
   Sphere,
+  Vector2,
   Vector3,
 } from 'three'
-import { createGrassLayout, terrainHeight } from '../core/grassLayout'
-import type { NatureSnapshot } from '../core/natureClock'
+import {
+  createGrassLayerLayout,
+  getGrassLayerBudgets,
+  terrainHeight,
+  type GrassLayerKind,
+} from '../core/grassLayout'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
+import type { EnvironmentSnapshot } from '../core/simulation'
 import { grassFragmentShader, grassVertexShader } from './grassShaders'
 
 interface MeadowProps {
   quality: QualityProfile
-  snapshotRef: MutableRefObject<NatureSnapshot>
+  snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
 }
 
-const MEADOW_RADIUS = 32
+interface GrassLayerDefinition {
+  kind: GrassLayerKind
+  seed: number
+  fade: number
+}
+
+const MEADOW_RADIUS = 48
 const SNOW_COLOR = new Color('#e7ece8')
 const DRY_COLOR = new Color('#a68a4b')
+const GUST_ORIGIN = new Vector2(-18, 4)
+const GRASS_LAYERS: readonly GrassLayerDefinition[] = [
+  { kind: 'foreground', seed: 4_219, fade: 1 },
+  { kind: 'middle', seed: 7_913, fade: 0.94 },
+  { kind: 'horizon', seed: 12_247, fade: 0.82 },
+]
 
-function createBladeGeometry(count: number) {
+function createBladeGeometry(
+  count: number,
+  kind: GrassLayerKind,
+  seed: number,
+) {
   const segmentCount = 5
   const positions: number[] = []
   const uvs: number[] = []
@@ -73,7 +95,7 @@ function createBladeGeometry(count: number) {
     }
   }
 
-  const layout = createGrassLayout(count, MEADOW_RADIUS, 4_219)
+  const layout = createGrassLayerLayout(count, kind, seed)
   const geometry = new InstancedBufferGeometry()
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
   geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2))
@@ -98,8 +120,20 @@ function createBladeGeometry(count: number) {
     'instanceYaw',
     new InstancedBufferAttribute(layout.yaw, 1),
   )
+  geometry.setAttribute(
+    'instanceWidth',
+    new InstancedBufferAttribute(layout.widths, 1),
+  )
+  geometry.setAttribute(
+    'instanceLean',
+    new InstancedBufferAttribute(layout.leans, 1),
+  )
+  geometry.setAttribute(
+    'instanceColorVariation',
+    new InstancedBufferAttribute(layout.colorVariation, 1),
+  )
   geometry.instanceCount = count
-  geometry.boundingSphere = new Sphere(new Vector3(0, 0, 0), MEADOW_RADIUS + 3)
+  geometry.boundingSphere = new Sphere(new Vector3(0, 0, -14), 44)
   return geometry
 }
 
@@ -118,7 +152,7 @@ function createGroundGeometry() {
   return geometry
 }
 
-function createGrassMaterial() {
+function createGrassMaterial(layerFade: number) {
   return new ShaderMaterial({
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
@@ -127,6 +161,9 @@ function createGrassMaterial() {
     uniforms: {
       uTime: { value: 0 },
       uWindStrength: { value: 0.5 },
+      uWindDirection: { value: new Vector2(1, 0) },
+      uGustOrigin: { value: GUST_ORIGIN.clone() },
+      uGustSpeed: { value: 1.8 },
       uGrassBase: { value: new Color('#4d7f32') },
       uGrassTip: { value: new Color('#83a84e') },
       uDryColor: { value: DRY_COLOR.clone() },
@@ -136,7 +173,10 @@ function createGrassMaterial() {
       uSunDirection: { value: new Vector3(0.4, 0.8, 0.2).normalize() },
       uFogColor: { value: new Color('#aab8a6') },
       uDryness: { value: 0 },
+      uWetness: { value: 0 },
+      uFrost: { value: 0 },
       uSnowCoverage: { value: 0 },
+      uLayerFade: { value: layerFade },
       uFogNear: { value: 9 },
       uFogFar: { value: 42 },
     },
@@ -145,21 +185,27 @@ function createGrassMaterial() {
 
 export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
-  const geometry = useMemo(
-    () => createBladeGeometry(quality.grassBlades),
-    [quality.grassBlades],
-  )
+  const layers = useMemo(() => {
+    const budgets = getGrassLayerBudgets(quality.grassBlades)
+
+    return GRASS_LAYERS.map((layer) => ({
+      ...layer,
+      geometry: createBladeGeometry(budgets[layer.kind], layer.kind, layer.seed),
+      material: createGrassMaterial(layer.fade),
+    }))
+  }, [quality.grassBlades])
   const groundGeometry = useMemo(createGroundGeometry, [])
-  const material = useMemo(createGrassMaterial, [])
 
   useEffect(
     () => () => {
-      geometry.dispose()
-      groundGeometry.dispose()
-      material.dispose()
+      for (const layer of layers) {
+        layer.geometry.dispose()
+        layer.material.dispose()
+      }
     },
-    [geometry, groundGeometry, material],
+    [layers],
   )
+  useEffect(() => () => groundGeometry.dispose(), [groundGeometry])
 
   useFrame(() => {
     const snapshot = snapshotRef.current
@@ -167,35 +213,50 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
     const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
     const sunHeight = Math.sin(solarAngle)
     const daylight = Math.min(1, Math.max(0.08, sunHeight * 0.75 + 0.34))
+    const wetness = Math.max(snapshot.weather.wetness, snapshot.weather.dew * 0.45)
 
-    material.uniforms.uTime.value = snapshot.elapsed
-    material.uniforms.uWindStrength.value = snapshot.windStrength
-    material.uniforms.uGrassBase.value.copy(season.grassColor)
-    material.uniforms.uGrassTip.value.copy(season.tipColor)
-    material.uniforms.uDryness.value = season.dryness
-    material.uniforms.uSnowCoverage.value = season.snowCoverage
-    material.uniforms.uSunColor.value.setRGB(
-      0.82 * daylight,
-      0.72 * daylight,
-      0.54 * daylight,
-    )
-    material.uniforms.uSkyColor.value.setRGB(
-      0.36 + daylight * 0.27,
-      0.43 + daylight * 0.25,
-      0.5 + daylight * 0.23,
-    )
-    material.uniforms.uSunDirection.value
-      .set(Math.cos(solarAngle), Math.max(0.08, sunHeight), -0.35)
-      .normalize()
+    for (const layer of layers) {
+      const { uniforms } = layer.material
+      uniforms.uTime.value = snapshot.elapsed
+      uniforms.uWindStrength.value = snapshot.weather.windStrength
+      uniforms.uWindDirection.value
+        .set(...snapshot.weather.windDirection)
+        .normalize()
+      uniforms.uGustSpeed.value = 1.2 + snapshot.weather.windStrength * 2.8
+      uniforms.uGrassBase.value.copy(season.grassColor)
+      uniforms.uGrassTip.value.copy(season.tipColor)
+      uniforms.uDryness.value = season.dryness
+      uniforms.uWetness.value = wetness
+      uniforms.uFrost.value = season.frost
+      uniforms.uSnowCoverage.value = Math.max(
+        season.snowCoverage,
+        snapshot.weather.snow * 0.72,
+      )
+      uniforms.uSunColor.value.setRGB(
+        0.82 * daylight,
+        0.72 * daylight,
+        0.54 * daylight,
+      )
+      uniforms.uSkyColor.value.setRGB(
+        0.36 + daylight * 0.27,
+        0.43 + daylight * 0.25,
+        0.5 + daylight * 0.23,
+      )
+      uniforms.uSunDirection.value
+        .set(Math.cos(solarAngle), Math.max(0.08, sunHeight), -0.35)
+        .normalize()
+    }
 
     if (terrainMaterialRef.current) {
       terrainMaterialRef.current.color
         .copy(season.groundColor)
+        .multiplyScalar(1 - wetness * 0.24)
         .lerp(SNOW_COLOR, season.snowCoverage * 0.82)
       terrainMaterialRef.current.emissive
         .copy(terrainMaterialRef.current.color)
         .multiplyScalar(0.26)
-      terrainMaterialRef.current.roughness = 0.95 - season.frost * 0.18
+      terrainMaterialRef.current.roughness =
+        0.95 - season.frost * 0.18 - wetness * 0.08
     }
   })
 
@@ -215,13 +276,16 @@ export function Meadow({ quality, snapshotRef, seasonRef }: MeadowProps) {
           roughness={0.95}
         />
       </mesh>
-      <mesh
-        geometry={geometry}
-        material={material}
-        castShadow={quality.shadowSize > 0}
-        receiveShadow={false}
-        frustumCulled={false}
-      />
+      {layers.map((layer) => (
+        <mesh
+          key={layer.kind}
+          geometry={layer.geometry}
+          material={layer.material}
+          castShadow={quality.shadowSize > 0 && layer.kind === 'foreground'}
+          receiveShadow={false}
+          frustumCulled={false}
+        />
+      ))}
     </group>
   )
 }

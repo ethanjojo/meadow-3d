@@ -5,6 +5,9 @@ export const QUALITY_PROFILES = {
     shadowSize: 0,
     maxDpr: 1,
     postprocessing: false,
+    cloudLayers: 1,
+    starCount: 700,
+    shootingStarPool: 1,
   },
   medium: {
     grassBlades: 48_000,
@@ -12,6 +15,9 @@ export const QUALITY_PROFILES = {
     shadowSize: 1024,
     maxDpr: 1.5,
     postprocessing: false,
+    cloudLayers: 2,
+    starCount: 1_300,
+    shootingStarPool: 2,
   },
   high: {
     grassBlades: 90_000,
@@ -19,6 +25,9 @@ export const QUALITY_PROFILES = {
     shadowSize: 2048,
     maxDpr: 2,
     postprocessing: true,
+    cloudLayers: 3,
+    starCount: 2_000,
+    shootingStarPool: 3,
   },
 } as const
 
