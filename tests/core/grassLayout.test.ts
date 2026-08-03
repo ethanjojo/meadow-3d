@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  GRASS_LAYER_RATIOS,
   GRASS_LAYER_PROFILES,
   createGrassLayerLayout,
   createGrassLayout,
@@ -144,13 +145,25 @@ describe('layered grass layout', () => {
     )
   })
 
-  it('suppresses blade height, lean, and wind near the camera', () => {
-    const close = getGrassClearance(1)
-    const clear = getGrassClearance(9)
+  it('preserves near-camera height, lean, and wind while avoiding the near plane', () => {
+    const close = getGrassClearance(0)
+    expect(close.height).toBeGreaterThanOrEqual(0.7)
+    expect(close.wind).toBeGreaterThanOrEqual(0.7)
+    expect(close.lean).toBeGreaterThanOrEqual(0.6)
 
-    expect(close.height * close.lean * close.wind).toBeLessThan(
-      clear.height * clear.lean * clear.wind,
-    )
+    const foreground = createGrassLayerLayout(8_192, 'foreground', 17)
+    for (let index = 2; index < foreground.offsets.length; index += 3) {
+      expect(foreground.offsets[index]).toBeLessThanOrEqual(4.4)
+    }
+  })
+
+  it('reserves enough blades for overlapping foreground coverage', () => {
+    expect(GRASS_LAYER_RATIOS.foreground).toBeGreaterThanOrEqual(0.28)
+    expect(
+      GRASS_LAYER_RATIOS.foreground +
+        GRASS_LAYER_RATIOS.middle +
+        GRASS_LAYER_RATIOS.horizon,
+    ).toBe(1)
   })
 
   it('uses root-locked bounded curvature without scale-multiplied bend', () => {
@@ -226,7 +239,7 @@ describe('layered grass layout', () => {
     GrassLayerKind,
     readonly [minimum: number, maximum: number],
   ]>([
-    ['foreground', [-4.5, 5]],
+    ['foreground', [-4.5, 4.4]],
     ['middle', [-16, -3.5]],
     ['horizon', [-34, -14]],
   ])('keeps %s roots inside its visible depth band', (kind, [minimum, maximum]) => {

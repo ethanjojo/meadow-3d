@@ -3,6 +3,7 @@ import { PerspectiveCamera } from 'three'
 import {
   getFixedCameraFraming,
   measureGroundHorizon,
+  measureWorldPointViewportY,
 } from '../../src/core/cameraFraming'
 
 describe('fixed meadow framing', () => {
@@ -19,6 +20,8 @@ describe('fixed meadow framing', () => {
 
     expect(measureGroundHorizon(camera)).toBeGreaterThanOrEqual(0.43)
     expect(measureGroundHorizon(camera)).toBeLessThanOrEqual(0.47)
-    expect(framing.position[1]).toBeLessThan(0.9)
+    const tallNearTip = measureWorldPointViewportY(camera, 1.08, 4.4)
+    expect(tallNearTip).toBeGreaterThanOrEqual(0.43)
+    expect(tallNearTip).toBeLessThanOrEqual(0.47)
   })
 })

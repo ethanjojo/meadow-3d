@@ -16,9 +16,9 @@ export interface GrassLayerLayout extends GrassLayout {
 }
 
 export const GRASS_LAYER_RATIOS = {
-  foreground: 0.22,
-  middle: 0.33,
-  horizon: 0.45,
+  foreground: 0.28,
+  middle: 0.32,
+  horizon: 0.4,
 } as const satisfies Record<GrassLayerKind, number>
 
 export const GRASS_LAYER_PROFILES = {
@@ -47,7 +47,7 @@ export const GRASS_LAYER_PROFILES = {
 >
 
 const LAYER_BANDS = {
-  foreground: { near: 5, far: -4.5, nearHalfWidth: 1.2, farHalfWidth: 8.2 },
+  foreground: { near: 4.4, far: -4.5, nearHalfWidth: 1.6, farHalfWidth: 8.2 },
   middle: { near: -3.5, far: -16, nearHalfWidth: 7.2, farHalfWidth: 16 },
   horizon: { near: -14, far: -34, nearHalfWidth: 13.5, farHalfWidth: 28 },
 } as const satisfies Record<
@@ -79,11 +79,11 @@ export function getGrassBendLimit(
 }
 
 export function getGrassClearance(distance: number) {
-  const clearance = smoothstep(1.6, 8, Math.max(0, distance))
+  const clearance = smoothstep(0.65, 5.5, Math.max(0, distance))
   return {
-    height: 0.15 + clearance * 0.85,
-    lean: clearance,
-    wind: clearance,
+    height: 0.7 + clearance * 0.3,
+    lean: 0.6 + clearance * 0.4,
+    wind: 0.7 + clearance * 0.3,
   }
 }
 
@@ -146,7 +146,9 @@ export function createGrassLayerLayout(
   const atlasCells = new Float32Array(bladeCount)
 
   for (let index = 0; index < bladeCount; index += 1) {
-    const depthProgress = random()
+    const depthSample = random()
+    const depthProgress =
+      kind === 'foreground' ? depthSample ** 1.45 : depthSample
     const z = band.near + (band.far - band.near) * depthProgress
     const halfWidth =
       band.nearHalfWidth +
