@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { Color } from 'three'
 import type { NatureSnapshot } from '../../src/core/natureClock'
 import type { SeasonAppearance } from '../../src/core/season'
-import { getWeatherOpacity } from '../../src/core/weather'
+import {
+  blendWeather,
+  getAutomaticWeather,
+  getWeatherOpacity,
+  getWeatherProfile,
+} from '../../src/core/weather'
 
 const snapshot: NatureSnapshot = {
   elapsed: 10,
@@ -49,5 +54,44 @@ describe('getWeatherOpacity', () => {
       expect(opacity).toBeGreaterThanOrEqual(0)
       expect(opacity).toBeLessThanOrEqual(1)
     }
+  })
+
+  it('makes storms darker, wetter, and windier than clear weather', () => {
+    const clear = getWeatherProfile('clear')
+    const storm = getWeatherProfile('storm')
+    expect(storm.cloudCover).toBeGreaterThan(clear.cloudCover)
+    expect(storm.wetness).toBeGreaterThan(clear.wetness)
+    expect(storm.windStrength).toBeGreaterThan(clear.windStrength)
+  })
+
+  it('blends every numeric weather channel continuously', () => {
+    const mixed = blendWeather(
+      getWeatherProfile('clear'),
+      getWeatherProfile('snow'),
+      0.5,
+    )
+    expect(mixed.snow).toBeGreaterThan(0)
+    expect(mixed.snow).toBeLessThan(1)
+    expect(mixed.cloudCover).toBeGreaterThan(0)
+    expect(mixed.cloudCover).toBeLessThan(1)
+  })
+
+  it('returns profile copies so callers cannot mutate presets', () => {
+    const clear = getWeatherProfile('clear')
+    clear.cloudCover = 1
+    ;(clear.windDirection as [number, number])[0] = 0
+
+    expect(getWeatherProfile('clear').cloudCover).toBe(0.08)
+    expect(getWeatherProfile('clear').windDirection).toEqual([0.86, 0.5])
+  })
+
+  it('keeps automatic winter precipitation season-appropriate', () => {
+    const weather = getAutomaticWeather(
+      { ...snapshot, weatherIntensity: 1 },
+      { ...season, rainBias: 0.2, snowBias: 0.85 },
+    )
+
+    expect(weather.snow).toBeGreaterThan(0)
+    expect(weather.rain).toBe(0)
   })
 })
