@@ -293,3 +293,11 @@ textarea {
     display: none;
   }
 }
+
+@media (min-width: 321px) and (max-width: 480px) {
+  .environment-panel {
+    position: fixed;
+    right: max(var(--space-edge), env(safe-area-inset-right));
+    bottom: calc(max(var(--space-edge), env(safe-area-inset-bottom)) + 3.5rem);
+  }
+}

@@ -58,22 +58,35 @@ describe('App', () => {
     })
   })
 
-  it('restores a validated environment choice from storage', () => {
+  it('loads valid environment settings into the controls and scene state', () => {
     localStorage.setItem(
       'living-meadow:environment',
       JSON.stringify({
         mode: 'manual',
-        dayPhase: 0.72,
-        seasonIndex: 2,
-        weather: 'storm',
+        dayPhase: 0,
+        seasonIndex: 3,
+        weather: 'snow',
       }),
     )
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
 
-    expect(screen.getByLabelText(/čas dne/i)).toBeEnabled()
-    expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /ručně/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /sněžení/i })).toBeChecked()
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-simulation-mode',
+      'manual',
+    )
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-weather',
+      'snow',
+    )
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-season',
+      '3',
+    )
   })
 
   it('falls back safely when stored settings contain malformed JSON', () => {
@@ -82,6 +95,10 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByRole('button', { name: /nastavení prostředí/i })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+      'data-simulation-mode',
+      'auto',
+    )
   })
 
   it('passes the app-owned simulation settings to the scene', () => {

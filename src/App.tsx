@@ -103,7 +103,13 @@ export function App() {
   const fallback = <StaticFallback />
 
   return (
-    <main className="experience" aria-label="Živá louka">
+    <main
+      className="experience"
+      aria-label="Živá louka"
+      data-simulation-mode={simulationSettings.mode}
+      data-weather={simulationSettings.weather}
+      data-season={simulationSettings.seasonIndex}
+    >
       {webglAvailable ? (
         <SceneErrorBoundary fallback={fallback}>
           <Canvas
