@@ -494,7 +494,7 @@ git commit -m "feat: densify meadow with fixed camera"
 
 **Interfaces:**
 - Consumes: `EnvironmentSnapshot`, `WeatherState`, and `QualityProfile`.
-- Produces: `getCelestialState(dayPhase)`, `getShootingStarState(elapsed, seed, slot)`, visible atmospheric helper components, and extended `AtmosphereState` cloud/celestial fields.
+- Produces: `getCelestialState(dayPhase)`, `getShootingStarState(elapsed, seed, slot, nightAmount)`, visible atmospheric helper components, and extended `AtmosphereState` cloud/celestial fields.
 
 - [ ] **Step 1: Write failing deterministic celestial tests**
 
@@ -512,11 +512,12 @@ describe('celestial state', () => {
   })
 
   it('schedules rare repeatable shooting stars', () => {
-    const first = getShootingStarState(420, 731, 0)
-    const second = getShootingStarState(420, 731, 0)
+    const first = getShootingStarState(420, 731, 0, 1)
+    const second = getShootingStarState(420, 731, 0, 1)
     expect(second).toEqual(first)
     expect(first.progress).toBeGreaterThanOrEqual(0)
     expect(first.progress).toBeLessThanOrEqual(1)
+    expect(getShootingStarState(420, 731, 0, 0).brightness).toBe(0)
   })
 })
 ```
@@ -529,7 +530,7 @@ Expected: FAIL because `src/core/celestial.ts` does not exist.
 
 - [ ] **Step 3: Implement pure celestial positions and rare event scheduling**
 
-Represent each celestial body as `{ direction: readonly [number, number, number], visibility: number, halo: number }`. Use the existing solar angle convention. Schedule shooting stars in deterministic windows no more frequent than roughly once per 45–120 simulated seconds, return `active`, `progress`, `start`, `direction`, and `brightness`, and suppress brightness outside night.
+Represent each celestial body as `{ direction: readonly [number, number, number], visibility: number, halo: number }`. Use the existing solar angle convention. Schedule shooting stars in deterministic windows no more frequent than roughly once per 45–120 simulated seconds, return `active`, `progress`, `start`, `direction`, and `brightness`, and multiply brightness by the supplied normalized `nightAmount`.
 
 - [ ] **Step 4: Implement visible sun and moon discs**
 
@@ -570,23 +571,25 @@ git commit -m "feat: add living celestial atmosphere"
 - Modify: `src/scene/Atmosphere.tsx`
 - Modify: `src/audio/ambientAudio.ts`
 - Modify: `tests/core/weather.test.ts`
-- Test: `tests/components/NatureScene.test.tsx`
+- Test: `tests/core/simulation.integration.test.ts`
 
 **Interfaces:**
 - Consumes: `EnvironmentSnapshot.weather`, shared wind direction, season appearance, reduced-motion state, and quality particle budget.
-- Produces: `deriveWeatherEffects({ dayPhase, seasonPosition, weather, reducedMotion })`, coherent rain, snow, pollen, firefly, wetness, dew, and distant storm-light rendering plus environment-driven audio.
+- Produces: `deriveWeatherEffects({ elapsed, dayPhase, seasonPosition, weather, reducedMotion })`, coherent rain, snow, pollen, firefly, wetness, dew, and distant storm-light rendering plus environment-driven audio.
 
 - [ ] **Step 1: Add failing tests for seasonal fireflies, dew, and reduced-motion storm behavior**
 
 ```ts
 it('allows fireflies only on calm summer nights', () => {
   const summerNight = deriveWeatherEffects({
+    elapsed: 120,
     dayPhase: 0,
     seasonPosition: 1,
     weather: getWeatherProfile('clear'),
     reducedMotion: false,
   })
   const winterNight = deriveWeatherEffects({
+    elapsed: 120,
     dayPhase: 0,
     seasonPosition: 3,
     weather: getWeatherProfile('clear'),
@@ -598,6 +601,7 @@ it('allows fireflies only on calm summer nights', () => {
 
 it('suppresses fast storm flashes for reduced motion', () => {
   const effects = deriveWeatherEffects({
+    elapsed: 120,
     dayPhase: 0.4,
     seasonPosition: 1,
     weather: getWeatherProfile('storm'),
@@ -615,7 +619,7 @@ Expected: FAIL because `deriveWeatherEffects` is not exported.
 
 - [ ] **Step 3: Implement coherent weather-effect derivation**
 
-Add `deriveWeatherEffects({ dayPhase, seasonPosition, weather, reducedMotion })` returning normalized `pollen`, `rain`, `snow`, `fireflies`, `dew`, and `stormFlash`. Gate fireflies to summer nights with clear or lightly cloudy weather. Gate dew to clear dawn after low precipitation. Generate distant storm flashes from deterministic elapsed-time pulses and set them to zero for reduced motion.
+Add `deriveWeatherEffects({ elapsed, dayPhase, seasonPosition, weather, reducedMotion })` returning normalized `pollen`, `rain`, `snow`, `fireflies`, `dew`, and `stormFlash`. Gate fireflies to summer nights with clear or lightly cloudy weather. Gate dew to clear dawn after low precipitation. Generate distant storm flashes from deterministic `elapsed` pulses and set them to zero for reduced motion.
 
 - [ ] **Step 4: Upgrade pooled particles to share the wind vector**
 
@@ -625,13 +629,13 @@ Add firefly material kind `3`, wind uniforms `uWindDirection`, and weather-speci
 
 Feed `weather.wetness` and derived dew into grass shader uniforms. Use wetness to darken grass and increase narrow highlights. Feed `stormFlash` into atmosphere light intensity with a low-amplitude distant flash. Blend fog density, exposure, and sky saturation using weather state. Pass the environment snapshot to ambient audio so rain, wind, and night layers track the selected weather.
 
-- [ ] **Step 6: Add a component-level shared-state test**
+- [ ] **Step 6: Add a real shared-state integration test**
 
-Mock React Three Fiber and render `NatureScene` with a manual storm setting. Assert that Atmosphere, Meadow, and WeatherParticles receive the same `snapshotRef` object and that `FixedCamera` is rendered instead of `CinematicCamera`.
+In `tests/core/simulation.integration.test.ts`, create a manual storm `EnvironmentSnapshot`, derive its season appearance, atmosphere, and weather effects with the real functions, and assert coherent observable results: storm wind exceeds clear wind, atmosphere fog increases, rain is non-zero, snow is zero outside winter, and reduced motion suppresses the storm flash. This protects the shared-state contract without asserting on mocks or private component wiring.
 
 - [ ] **Step 7: Run weather, component, lint, and build checks**
 
-Run: `npm test -- --run tests/core/weather.test.ts tests/components/NatureScene.test.tsx`
+Run: `npm test -- --run tests/core/weather.test.ts tests/core/simulation.integration.test.ts`
 
 Run: `npm run lint`
 
@@ -642,7 +646,7 @@ Expected: all commands exit with code 0.
 - [ ] **Step 8: Commit coordinated environmental effects**
 
 ```bash
-git add src/core/weather.ts src/scene/WeatherParticles.tsx src/scene/Meadow.tsx src/scene/Atmosphere.tsx src/audio/ambientAudio.ts tests/core/weather.test.ts tests/components/NatureScene.test.tsx
+git add src/core/weather.ts src/scene/WeatherParticles.tsx src/scene/Meadow.tsx src/scene/Atmosphere.tsx src/audio/ambientAudio.ts tests/core/weather.test.ts tests/core/simulation.integration.test.ts
 git commit -m "feat: coordinate meadow weather effects"
 ```
 
