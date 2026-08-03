@@ -9,11 +9,8 @@ import {
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
-import { getCelestialState } from '../core/celestial'
-import type { EnvironmentSnapshot } from '../core/simulation'
 
 interface CelestialBodiesProps {
-  snapshotRef: MutableRefObject<EnvironmentSnapshot>
   atmosphereRef: MutableRefObject<AtmosphereState>
   visible: boolean
 }
@@ -56,7 +53,6 @@ function createHaloMaterial(color: string) {
 }
 
 export function CelestialBodies({
-  snapshotRef,
   atmosphereRef,
   visible,
 }: CelestialBodiesProps) {
@@ -104,12 +100,10 @@ export function CelestialBodies({
   useFrame(({ camera }) => {
     if (!visible) return
 
-    const snapshot = snapshotRef.current
-    const celestial = getCelestialState(snapshot.dayPhase)
     const atmosphere = atmosphereRef.current
     const bodies = [
-      [sunDiscRef.current, sunHaloRef.current, celestial.sun.direction],
-      [moonDiscRef.current, moonHaloRef.current, celestial.moon.direction],
+      [sunDiscRef.current, sunHaloRef.current, atmosphere.celestial.sun.direction],
+      [moonDiscRef.current, moonHaloRef.current, atmosphere.celestial.moon.direction],
     ] as const
 
     for (const [disc, halo, direction] of bodies) {

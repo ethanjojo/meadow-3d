@@ -80,16 +80,17 @@ export const grassFragmentShader = /* glsl */ `
   uniform vec3 uDryColor;
   uniform vec3 uSnowColor;
   uniform vec3 uSunColor;
+  uniform vec3 uMoonColor;
   uniform vec3 uSkyColor;
   uniform vec3 uSunDirection;
+  uniform vec3 uMoonDirection;
   uniform vec3 uFogColor;
   uniform float uDryness;
   uniform float uWetness;
   uniform float uFrost;
   uniform float uSnowCoverage;
   uniform float uLayerFade;
-  uniform float uFogNear;
-  uniform float uFogFar;
+  uniform float uFogDensity;
 
   varying float vHeight;
   varying float vVariation;
@@ -112,13 +113,19 @@ export const grassFragmentShader = /* glsl */ `
 
     vec3 normal = normalize(vBladeNormal);
     float sunFacing = max(dot(normal, normalize(uSunDirection)), 0.0);
+    float moonFacing = max(dot(normal, normalize(uMoonDirection)), 0.0);
     float skyFacing = normal.y * 0.5 + 0.5;
-    vec3 light = uSkyColor * (0.38 + skyFacing * 0.34) + uSunColor * sunFacing * 0.72;
+    vec3 light =
+      uSkyColor * (0.38 + skyFacing * 0.34) +
+      uSunColor * sunFacing * 0.72 +
+      uMoonColor * moonFacing * 0.48;
     vec3 litColor = grassColor * light;
     float wetHighlight = uWetness * pow(sunFacing, 18.0) * (0.18 + lowerBlade * 0.32);
     litColor += uSunColor * wetHighlight;
 
-    float fogAmount = smoothstep(uFogNear, uFogFar, vViewDepth);
+    float fogAmount = 1.0 - exp(
+      -uFogDensity * uFogDensity * vViewDepth * vViewDepth
+    );
     fogAmount = mix(fogAmount, 1.0, 1.0 - uLayerFade);
     gl_FragColor = vec4(mix(litColor, uFogColor, fogAmount), 1.0);
     #include <tonemapping_fragment>

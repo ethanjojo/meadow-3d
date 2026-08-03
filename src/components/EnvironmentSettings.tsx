@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SeasonIndex } from '../core/natureClock'
 import type {
+  EnvironmentSnapshot,
   SimulationSettings,
   WeatherPreset,
 } from '../core/simulation'
 
 interface EnvironmentSettingsProps {
   value: SimulationSettings
+  visibleSnapshot?: EnvironmentSnapshot | null
   onChange: (next: SimulationSettings) => void
 }
 
@@ -26,11 +28,49 @@ const WEATHER_OPTIONS: readonly { value: WeatherPreset; label: string }[] = [
   { value: 'snow', label: 'Sněžení' },
 ]
 
-export function EnvironmentSettings({ value, onChange }: EnvironmentSettingsProps) {
+function getVisibleSeason(snapshot: EnvironmentSnapshot): SeasonIndex {
+  return (Math.round(snapshot.seasonPosition) % 4) as SeasonIndex
+}
+
+function getCzechTimeText(dayPhase: number) {
+  const wrappedPhase = ((dayPhase % 1) + 1) % 1
+  const totalMinutes = Math.round(wrappedPhase * 24 * 60) % (24 * 60)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  const dayPart =
+    hours < 5 || hours >= 21
+      ? 'Noc'
+      : hours < 7
+        ? 'Svítání'
+        : hours < 11
+          ? 'Ráno'
+          : hours < 13
+            ? 'Poledne'
+            : hours < 18
+              ? 'Odpoledne'
+              : 'Soumrak'
+
+  return `${dayPart} · ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+export function EnvironmentSettings({
+  value,
+  visibleSnapshot,
+  onChange,
+}: EnvironmentSettingsProps) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const manual = value.mode === 'manual'
+  const displayedDayPhase =
+    manual || !visibleSnapshot ? value.dayPhase : visibleSnapshot.dayPhase
+  const displayedSeason =
+    manual || !visibleSnapshot
+      ? value.seasonIndex
+      : getVisibleSeason(visibleSnapshot)
+  const displayedWeather =
+    manual || !visibleSnapshot ? value.weather : visibleSnapshot.weather.preset
+  const timeText = getCzechTimeText(displayedDayPhase)
 
   const dismiss = useCallback(() => {
     setOpen(false)
@@ -68,6 +108,20 @@ export function EnvironmentSettings({ value, onChange }: EnvironmentSettingsProp
     next: SimulationSettings[Key],
   ) => onChange({ ...value, [key]: next })
 
+  const updateMode = (mode: SimulationSettings['mode']) => {
+    if (mode === 'manual' && value.mode === 'auto' && visibleSnapshot) {
+      onChange({
+        mode,
+        dayPhase: visibleSnapshot.dayPhase,
+        seasonIndex: getVisibleSeason(visibleSnapshot),
+        weather: visibleSnapshot.weather.preset,
+      })
+      return
+    }
+
+    update('mode', mode)
+  }
+
   return (
     <div className="environment-settings">
       <button
@@ -96,32 +150,37 @@ export function EnvironmentSettings({ value, onChange }: EnvironmentSettingsProp
                   type="radio"
                   name="environment-mode"
                   checked={value.mode === mode}
-                  onChange={() => update('mode', mode)}
+                  onChange={() => updateMode(mode)}
                 />
                 {mode === 'auto' ? 'Auto' : 'Ručně'}
               </label>
             ))}
           </fieldset>
-          <label className="environment-range">
-            <span>Čas dne</span>
+          <div className="environment-range">
+            <span>
+              <label htmlFor="environment-day-phase">Čas dne</label>
+              <output htmlFor="environment-day-phase">{timeText}</output>
+            </span>
             <input
+              id="environment-day-phase"
               aria-label="Čas dne"
+              aria-valuetext={timeText}
               type="range"
               min="0"
               max="1"
               step="0.01"
-              value={value.dayPhase}
+              value={displayedDayPhase}
               disabled={!manual}
               onChange={(event) => update('dayPhase', Number(event.currentTarget.value))}
             />
-          </label>
+          </div>
           <SeasonChoices
-            value={value.seasonIndex}
+            value={displayedSeason}
             disabled={!manual}
             onChange={(seasonIndex) => update('seasonIndex', seasonIndex)}
           />
           <WeatherChoices
-            value={value.weather}
+            value={displayedWeather}
             disabled={!manual}
             onChange={(weather) => update('weather', weather)}
           />

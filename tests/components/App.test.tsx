@@ -2,6 +2,10 @@ import type { ReactNode } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/App'
+import type {
+  EnvironmentSnapshot,
+  SimulationSettings,
+} from '../../src/core/simulation'
 import { hasWebGLSupport } from '../../src/core/webgl'
 
 vi.mock('@react-three/fiber', () => ({
@@ -11,8 +15,47 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 vi.mock('../../src/scene/NatureScene', () => ({
-  NatureScene: ({ simulationSettings }: { simulationSettings: { mode: string } }) => (
-    <output data-testid="simulation-mode">{simulationSettings.mode}</output>
+  NatureScene: ({
+    simulationSettings,
+    onNatureSample,
+  }: {
+    simulationSettings: SimulationSettings
+    onNatureSample?: (snapshot: EnvironmentSnapshot) => void
+  }) => (
+    <>
+      <output data-testid="simulation-mode">{simulationSettings.mode}</output>
+      <button
+        type="button"
+        aria-label="Publikovat živý stav scény"
+        onClick={() =>
+          onNatureSample?.({
+            elapsed: 90,
+            autoElapsed: 90,
+            dayPhase: 0.5,
+            seasonPhase: 0.7,
+            seasonIndex: 2,
+            nextSeasonIndex: 3,
+            seasonBlend: 0.8,
+            seasonPosition: 2.8,
+            windStrength: 0.95,
+            weatherIntensity: 1,
+            weather: {
+              preset: 'storm',
+              cloudCover: 1,
+              fog: 0.55,
+              rain: 1,
+              snow: 0,
+              storm: 1,
+              wetness: 1,
+              fireflies: 0,
+              dew: 0,
+              windStrength: 0.95,
+              windDirection: [0.86, 0.5],
+            },
+          })
+        }
+      />
+    </>
   ),
 }))
 
@@ -115,5 +158,21 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByTestId('simulation-mode')).toHaveTextContent('manual')
+  })
+
+  it('forwards the throttled visible scene state to Auto settings labels', () => {
+    render(<App />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /publikovat živý stav scény/i }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+
+    expect(screen.getByRole('slider', { name: /čas dne/i })).toHaveAttribute(
+      'aria-valuetext',
+      'Poledne · 12:00',
+    )
+    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
   })
 })

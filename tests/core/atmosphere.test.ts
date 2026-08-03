@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { getCelestialState } from '../../src/core/celestial'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
 import { advanceCloudPhase, getAtmosphere } from '../../src/core/atmosphere'
@@ -60,5 +61,40 @@ describe('getAtmosphere', () => {
 
     expect(afterSpeedChange - longRunningPhase).toBeCloseTo(0.0011, 8)
     expect(afterLongFrame - afterSpeedChange).toBeCloseTo(0.0011, 8)
+  })
+
+  it('updates one reusable state with shared celestial and attenuated light values', () => {
+    const auto = sampleNatureClock(DEFAULT_CLOCK.dayDuration * 0.5)
+    const clear = createEnvironmentSnapshot(auto, {
+      mode: 'manual',
+      dayPhase: 0.5,
+      seasonIndex: 1,
+      weather: 'clear',
+    })
+    const storm = createEnvironmentSnapshot(auto, {
+      mode: 'manual',
+      dayPhase: 0.5,
+      seasonIndex: 1,
+      weather: 'storm',
+    })
+    const state = getAtmosphere(clear, getSeasonAppearance(clear))
+    const celestial = state.celestial
+    const clearSunIntensity = state.sunIntensity
+
+    const updated = getAtmosphere(
+      storm,
+      getSeasonAppearance(storm),
+      state,
+    )
+
+    expect(updated).toBe(state)
+    expect(updated.celestial).toBe(celestial)
+    expect(updated.celestial.sun.direction).toEqual(
+      getCelestialState(storm.dayPhase).sun.direction,
+    )
+    expect(updated.sunIntensity).toBeLessThan(clearSunIntensity)
+    expect(updated.sunColor.getHexString()).toBe('fff2cf')
+    expect(updated.moonColor.getHexString()).toBe('8ba8cf')
+    expect(updated.skyLightIntensity).toBeGreaterThan(0)
   })
 })

@@ -146,6 +146,15 @@ textarea {
   text-transform: uppercase;
 }
 
+.environment-range output {
+  float: right;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .environment-options {
   display: flex;
   flex-wrap: wrap;
@@ -294,7 +303,7 @@ textarea {
   }
 }
 
-@media (min-width: 320px) and (max-width: 480px) {
+@media (min-width: 320px) and (max-width: 560px) {
   .environment-panel {
     position: fixed;
     right: max(var(--space-edge), env(safe-area-inset-right));

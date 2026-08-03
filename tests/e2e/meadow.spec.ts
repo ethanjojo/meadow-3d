@@ -68,6 +68,23 @@ test('keeps the environment popover inside a short viewport', async ({ page }) =
   expect(bounds.y).toBeGreaterThanOrEqual(16)
 })
 
+test('keeps the environment popover inside a 500px-wide viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 500, height: 700 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Nastavení prostředí' }).click()
+  const panel = page.getByRole('dialog', { name: 'Nastavení prostředí' })
+  await expect(panel).toBeFocused()
+
+  const bounds = await panel.boundingBox()
+  if (!bounds) throw new Error('Environment panel has no visible bounds')
+  expect(bounds.x).toBeGreaterThanOrEqual(16)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(484)
+  expect(bounds.y).toBeGreaterThanOrEqual(16)
+})
+
 test('manually controls the environment and returns to auto', async ({ page }) => {
   test.slow()
   await page.goto('/')

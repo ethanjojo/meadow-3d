@@ -8,13 +8,12 @@ import {
   Color,
   DirectionalLight,
   FogExp2,
+  HemisphereLight,
   ShaderMaterial,
   Vector3,
 } from 'three'
-import { getAtmosphere, type AtmosphereState } from '../core/atmosphere'
-import { getCelestialState } from '../core/celestial'
+import type { AtmosphereState } from '../core/atmosphere'
 import type { QualityProfile } from '../core/quality'
-import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { CelestialBodies } from './CelestialBodies'
@@ -24,7 +23,7 @@ import { ShootingStars } from './ShootingStars'
 interface AtmosphereProps {
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
-  seasonRef: MutableRefObject<SeasonAppearance>
+  atmosphereRef: MutableRefObject<AtmosphereState>
   effectsRef: MutableRefObject<WeatherEffects>
   reducedMotion: boolean
   visible: boolean
@@ -121,7 +120,7 @@ function createStars(count: number) {
 export function Atmosphere({
   quality,
   snapshotRef,
-  seasonRef,
+  atmosphereRef,
   effectsRef,
   reducedMotion,
   visible,
@@ -129,10 +128,8 @@ export function Atmosphere({
   const { gl } = useThree()
   const sunRef = useRef<DirectionalLight>(null)
   const moonRef = useRef<DirectionalLight>(null)
+  const hemisphereRef = useRef<HemisphereLight>(null)
   const fogRef = useRef<FogExp2>(null)
-  const atmosphereRef = useRef<AtmosphereState>(
-    getAtmosphere(snapshotRef.current, seasonRef.current),
-  )
   const starsGeometry = useMemo(
     () => createStars(quality.starCount),
     [quality.starCount],
@@ -197,12 +194,10 @@ export function Atmosphere({
     if (!visible) return
 
     const snapshot = snapshotRef.current
-    const state = getAtmosphere(snapshot, seasonRef.current)
+    const state = atmosphereRef.current
     const effects = effectsRef.current
-    atmosphereRef.current = state
-    const celestial = getCelestialState(snapshot.dayPhase)
-    const sunDirection = celestial.sun.direction
-    const moonDirection = celestial.moon.direction
+    const sunDirection = state.celestial.sun.direction
+    const moonDirection = state.celestial.moon.direction
 
     skyMaterial.uniforms.uTopColor.value.copy(state.skyTop)
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)
@@ -216,21 +211,30 @@ export function Atmosphere({
       fogRef.current.color.copy(state.fogColor)
       fogRef.current.density = state.fogDensity
     }
+    if (hemisphereRef.current) {
+      hemisphereRef.current.color.copy(state.skyLightColor)
+      hemisphereRef.current.groundColor.copy(state.groundLightColor)
+      hemisphereRef.current.intensity = state.skyLightIntensity
+    }
     if (sunRef.current) {
       sunRef.current.position.set(...sunDirection).multiplyScalar(78)
       sunRef.current.intensity = state.sunIntensity + effects.stormFlash * 0.22
-      sunRef.current.color.set(state.sunElevation < 0.35 ? '#ffd09a' : '#fff2cf')
+      sunRef.current.color.copy(state.sunColor)
     }
     if (moonRef.current) {
       moonRef.current.position.set(...moonDirection).multiplyScalar(78)
       moonRef.current.intensity = state.moonIntensity
+      moonRef.current.color.copy(state.moonColor)
     }
   })
 
   return (
     <>
       <fogExp2 ref={fogRef} attach="fog" args={['#9fb4ac', 0.009]} />
-      <hemisphereLight args={['#b8d3df', '#263a2d', 0.7]} />
+      <hemisphereLight
+        ref={hemisphereRef}
+        args={['#b8d3df', '#263a2d', 0.7]}
+      />
       <directionalLight
         ref={sunRef}
         castShadow={quality.shadowSize > 0}
@@ -244,7 +248,6 @@ export function Atmosphere({
       </mesh>
       <points geometry={starsGeometry} material={starsMaterial} frustumCulled={false} />
       <CelestialBodies
-        snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
         visible={visible}
       />

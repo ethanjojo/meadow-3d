@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { Color, ShaderMaterial, Vector3 } from 'three'
 import { getAtmosphere } from '../../src/core/atmosphere'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
 import { createEnvironmentSnapshot } from '../../src/core/simulation'
 import { deriveWeatherEffects } from '../../src/core/weather'
+import { syncGrassAtmosphereUniforms } from '../../src/scene/grassAtmosphere'
 
 describe('shared environment state', () => {
   it('keeps manual storm consequences coherent across consumers', () => {
@@ -40,5 +42,52 @@ describe('shared environment state', () => {
     expect(effects.rain).toBeGreaterThan(0)
     expect(effects.snow).toBe(0)
     expect(effects.stormFlash).toBe(0)
+  })
+
+  it('writes the shared atmosphere light and fog contract into grass uniforms', () => {
+    const auto = sampleNatureClock(DEFAULT_CLOCK.dayDuration * 0.5)
+    const snapshot = createEnvironmentSnapshot(auto, {
+      mode: 'manual',
+      dayPhase: 0.5,
+      seasonIndex: 1,
+      weather: 'fog',
+    })
+    const atmosphere = getAtmosphere(snapshot, getSeasonAppearance(snapshot))
+    const material = new ShaderMaterial({
+      uniforms: {
+        uSunDirection: { value: new Vector3() },
+        uMoonDirection: { value: new Vector3() },
+        uSunColor: { value: new Color() },
+        uMoonColor: { value: new Color() },
+        uSkyColor: { value: new Color() },
+        uFogColor: { value: new Color() },
+        uFogDensity: { value: 0 },
+      },
+    })
+
+    syncGrassAtmosphereUniforms(material.uniforms, atmosphere)
+
+    expect(material.uniforms.uSunDirection.value.toArray()).toEqual(
+      atmosphere.celestial.sun.direction,
+    )
+    expect(material.uniforms.uMoonDirection.value.toArray()).toEqual(
+      atmosphere.celestial.moon.direction,
+    )
+    expect(material.uniforms.uSunColor.value.toArray()).toEqual(
+      atmosphere.sunColor.clone().multiplyScalar(atmosphere.sunIntensity).toArray(),
+    )
+    expect(material.uniforms.uMoonColor.value.toArray()).toEqual(
+      atmosphere.moonColor.clone().multiplyScalar(atmosphere.moonIntensity).toArray(),
+    )
+    expect(material.uniforms.uSkyColor.value.toArray()).toEqual(
+      atmosphere.skyLightColor
+        .clone()
+        .multiplyScalar(atmosphere.skyLightIntensity)
+        .toArray(),
+    )
+    expect(material.uniforms.uFogColor.value.getHex()).toBe(
+      atmosphere.fogColor.getHex(),
+    )
+    expect(material.uniforms.uFogDensity.value).toBe(atmosphere.fogDensity)
   })
 })

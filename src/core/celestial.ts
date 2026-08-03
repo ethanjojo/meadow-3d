@@ -1,5 +1,5 @@
 export interface CelestialBodyState {
-  direction: readonly [number, number, number]
+  direction: [number, number, number]
   visibility: number
   halo: number
 }
@@ -38,28 +38,28 @@ function hash(seed: number) {
   return ((value ^ (value >>> 16)) >>> 0) / 4_294_967_296
 }
 
-export function getCelestialState(dayPhase: number): CelestialState {
+export function getCelestialState(
+  dayPhase: number,
+  target: CelestialState = {
+    sun: { direction: [0, 0, 0], visibility: 0, halo: 0 },
+    moon: { direction: [0, 0, 0], visibility: 0, halo: 0 },
+  },
+): CelestialState {
   const solarAngle = dayPhase * Math.PI * 2 - Math.PI / 2
   const horizontal = Math.cos(solarAngle)
-  const sunDirection = [
-    horizontal * 0.35,
-    Math.sin(solarAngle),
-    -horizontal * Math.sqrt(1 - 0.35 ** 2),
-  ] as const
-  const moonDirection = sunDirection.map((value) => -value) as [number, number, number]
-
-  return {
-    sun: {
-      direction: sunDirection,
-      visibility: smoothstep(-0.08, 0.12, sunDirection[1]),
-      halo: smoothstep(-0.16, 0.08, sunDirection[1]),
-    },
-    moon: {
-      direction: moonDirection,
-      visibility: smoothstep(-0.08, 0.12, moonDirection[1]),
-      halo: smoothstep(-0.16, 0.08, moonDirection[1]),
-    },
-  }
+  const sunDirection = target.sun.direction
+  const moonDirection = target.moon.direction
+  sunDirection[0] = horizontal * 0.35
+  sunDirection[1] = Math.sin(solarAngle)
+  sunDirection[2] = -horizontal * Math.sqrt(1 - 0.35 ** 2)
+  moonDirection[0] = -sunDirection[0]
+  moonDirection[1] = -sunDirection[1]
+  moonDirection[2] = -sunDirection[2]
+  target.sun.visibility = smoothstep(-0.08, 0.12, sunDirection[1])
+  target.sun.halo = smoothstep(-0.16, 0.08, sunDirection[1])
+  target.moon.visibility = smoothstep(-0.08, 0.12, moonDirection[1])
+  target.moon.halo = smoothstep(-0.16, 0.08, moonDirection[1])
+  return target
 }
 
 export function getShootingStarState(

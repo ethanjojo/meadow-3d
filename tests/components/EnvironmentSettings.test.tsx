@@ -1,7 +1,27 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvironmentSettings } from '../../src/components/EnvironmentSettings'
-import { DEFAULT_SIMULATION_SETTINGS } from '../../src/core/simulation'
+import { sampleNatureClock } from '../../src/core/natureClock'
+import {
+  createEnvironmentSnapshot,
+  DEFAULT_SIMULATION_SETTINGS,
+} from '../../src/core/simulation'
+
+function createVisibleWinterNoon() {
+  const auto = sampleNatureClock(90)
+  const snapshot = createEnvironmentSnapshot(auto, {
+    mode: 'manual',
+    dayPhase: 0.5,
+    seasonIndex: 2,
+    weather: 'storm',
+  })
+
+  return {
+    ...snapshot,
+    seasonPosition: 2.8,
+    seasonBlend: 0.8,
+  }
+}
 
 describe('EnvironmentSettings', () => {
   it('opens, enables manual controls, and emits a weather choice', () => {
@@ -13,7 +33,7 @@ describe('EnvironmentSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
 
     expect(screen.getByRole('dialog', { name: /nastavení prostředí/i })).toBeVisible()
-    expect(screen.getByLabelText(/čas dne/i)).toBeDisabled()
+    expect(screen.getByRole('slider', { name: /čas dne/i })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('radio', { name: /ručně/i }))
     const manual = { ...DEFAULT_SIMULATION_SETTINGS, mode: 'manual' as const }
@@ -50,5 +70,46 @@ describe('EnvironmentSettings', () => {
     fireEvent.pointerDown(document.body)
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows the throttled visible environment while Auto controls are disabled', () => {
+    render(
+      <EnvironmentSettings
+        value={DEFAULT_SIMULATION_SETTINGS}
+        visibleSnapshot={createVisibleWinterNoon()}
+        onChange={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+
+    const time = screen.getByRole('slider', { name: /čas dne/i })
+    expect(time).toBeDisabled()
+    expect(time).toHaveValue('0.5')
+    expect(time).toHaveAttribute('aria-valuetext', 'Poledne · 12:00')
+    expect(screen.getByText('Poledne · 12:00')).toBeVisible()
+    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
+  })
+
+  it('seeds Manual targets from the currently visible Auto environment', () => {
+    const onChange = vi.fn()
+    render(
+      <EnvironmentSettings
+        value={DEFAULT_SIMULATION_SETTINGS}
+        visibleSnapshot={createVisibleWinterNoon()}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /ručně/i }))
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      mode: 'manual',
+      dayPhase: 0.5,
+      seasonIndex: 3,
+      weather: 'storm',
+    })
   })
 })

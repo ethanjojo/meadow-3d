@@ -13,6 +13,7 @@ import {
   Vector2,
   Vector3,
 } from 'three'
+import type { AtmosphereState } from '../core/atmosphere'
 import {
   createGrassLayerLayout,
   getGrassLayerBudgets,
@@ -23,12 +24,14 @@ import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
+import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
 import { grassFragmentShader, grassVertexShader } from './grassShaders'
 
 interface MeadowProps {
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
+  atmosphereRef: MutableRefObject<AtmosphereState>
   effectsRef: MutableRefObject<WeatherEffects>
 }
 
@@ -171,16 +174,17 @@ function createGrassMaterial(layerFade: number) {
       uDryColor: { value: DRY_COLOR.clone() },
       uSnowColor: { value: SNOW_COLOR.clone() },
       uSunColor: { value: new Color('#fff0c0') },
+      uMoonColor: { value: new Color('#8ba8cf') },
       uSkyColor: { value: new Color('#adc7d0') },
       uSunDirection: { value: new Vector3(0.4, 0.8, 0.2).normalize() },
+      uMoonDirection: { value: new Vector3(-0.4, 0.8, -0.2).normalize() },
       uFogColor: { value: new Color('#aab8a6') },
       uDryness: { value: 0 },
       uWetness: { value: 0 },
       uFrost: { value: 0 },
       uSnowCoverage: { value: 0 },
       uLayerFade: { value: layerFade },
-      uFogNear: { value: 9 },
-      uFogFar: { value: 42 },
+      uFogDensity: { value: 0.009 },
     },
   })
 }
@@ -189,6 +193,7 @@ export function Meadow({
   quality,
   snapshotRef,
   seasonRef,
+  atmosphereRef,
   effectsRef,
 }: MeadowProps) {
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
@@ -217,9 +222,7 @@ export function Meadow({
   useFrame(() => {
     const snapshot = snapshotRef.current
     const season = seasonRef.current
-    const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
-    const sunHeight = Math.sin(solarAngle)
-    const daylight = Math.min(1, Math.max(0.08, sunHeight * 0.75 + 0.34))
+    const atmosphere = atmosphereRef.current
     const effects = effectsRef.current
     const wetness = Math.max(snapshot.weather.wetness, effects.dew * 0.45)
 
@@ -240,19 +243,7 @@ export function Meadow({
         season.snowCoverage,
         snapshot.weather.snow * 0.72,
       )
-      uniforms.uSunColor.value.setRGB(
-        0.82 * daylight,
-        0.72 * daylight,
-        0.54 * daylight,
-      )
-      uniforms.uSkyColor.value.setRGB(
-        0.36 + daylight * 0.27,
-        0.43 + daylight * 0.25,
-        0.5 + daylight * 0.23,
-      )
-      uniforms.uSunDirection.value
-        .set(Math.cos(solarAngle), Math.max(0.08, sunHeight), -0.35)
-        .normalize()
+      syncGrassAtmosphereUniforms(uniforms, atmosphere)
     }
 
     if (terrainMaterialRef.current) {

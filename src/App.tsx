@@ -10,6 +10,7 @@ import { QUALITY_PROFILES } from './core/quality'
 import {
   DEFAULT_SIMULATION_SETTINGS,
   parseSimulationSettings,
+  type EnvironmentSnapshot,
   type SimulationSettings,
 } from './core/simulation'
 import { hasWebGLSupport } from './core/webgl'
@@ -36,6 +37,8 @@ export function App() {
   const [simulationSettings, setSimulationSettings] = useState(
     getInitialSimulationSettings,
   )
+  const [visibleSnapshot, setVisibleSnapshot] =
+    useState<EnvironmentSnapshot | null>(null)
   const audioRef = useRef<AmbientAudioController | null>(null)
   const webglAvailable = useMemo(hasWebGLSupport, [])
   const reducedMotion = useMemo(
@@ -70,8 +73,9 @@ export function App() {
   }, [])
 
   const handleNatureSample = useCallback(
-    (snapshot: Parameters<AmbientAudioController['setNature']>[0]) => {
+    (snapshot: EnvironmentSnapshot) => {
       audioRef.current?.setNature(snapshot)
+      setVisibleSnapshot(snapshot)
     },
     [],
   )
@@ -143,6 +147,7 @@ export function App() {
         <div className="experience-controls">
           <EnvironmentSettings
             value={simulationSettings}
+            visibleSnapshot={visibleSnapshot}
             onChange={handleSimulationSettingsChange}
           />
           <SoundToggle enabled={soundEnabled} onChange={handleSoundChange} />

@@ -1,5 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
+import { getAtmosphere } from '../core/atmosphere'
 import {
   DEFAULT_CLOCK,
   sampleNatureClock,
@@ -49,7 +50,16 @@ export function NatureScene({
     [initialAutoSnapshot],
   )
   const snapshotRef = useRef(initialSnapshot)
-  const seasonRef = useRef(getSeasonAppearance(initialSnapshot))
+  const initialSeason = useMemo(
+    () => getSeasonAppearance(initialSnapshot),
+    [initialSnapshot],
+  )
+  const seasonRef = useRef(initialSeason)
+  const initialAtmosphere = useMemo(
+    () => getAtmosphere(initialSnapshot, initialSeason),
+    [initialSeason, initialSnapshot],
+  )
+  const atmosphereRef = useRef(initialAtmosphere)
   const effectsInputRef = useRef({
     elapsed: initialSnapshot.elapsed,
     dayPhase: initialSnapshot.dayPhase,
@@ -78,6 +88,7 @@ export function NatureScene({
     )
     snapshotRef.current = snapshot
     seasonRef.current = getSeasonAppearance(snapshot)
+    getAtmosphere(snapshot, seasonRef.current, atmosphereRef.current)
     const effectsInput = effectsInputRef.current
     effectsInput.elapsed = snapshot.elapsed
     effectsInput.dayPhase = snapshot.dayPhase
@@ -101,7 +112,7 @@ export function NatureScene({
       <Atmosphere
         quality={quality}
         snapshotRef={snapshotRef}
-        seasonRef={seasonRef}
+        atmosphereRef={atmosphereRef}
         effectsRef={effectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
@@ -110,6 +121,7 @@ export function NatureScene({
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
+        atmosphereRef={atmosphereRef}
         effectsRef={effectsRef}
       />
       <WeatherParticles
