@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   getShootingStarState,
   projectShootingStarTrail,
@@ -9,6 +9,233 @@ test.beforeEach(async ({ page }) => {
     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 2 })
   })
 })
+
+interface VisualEnvironment {
+  dayPhase: number
+  weather: 'clear' | 'storm'
+}
+
+interface ScreenshotEvidence {
+  horizonFraction: number
+  largestFlatTerrainFraction: number
+  lowerFrameVariance: number
+  openSkyLuminance: number
+  foregroundLuminance: number
+  horizonColor: { red: number; green: number; blue: number }
+}
+
+async function loadVisualEnvironment(
+  page: Page,
+  environment: VisualEnvironment,
+) {
+  await page.goto('/')
+  await page.evaluate((value) => {
+    localStorage.setItem(
+      'living-meadow:environment',
+      JSON.stringify({
+        mode: 'manual',
+        dayPhase: value.dayPhase,
+        seasonIndex: 0,
+        weather: value.weather,
+      }),
+    )
+  }, environment)
+  await page.reload()
+  await expect(page.getByRole('main', { name: 'Živá louka' })).toHaveAttribute(
+    'data-weather',
+    environment.weather,
+  )
+  await page.waitForTimeout(1_500)
+}
+
+async function analyzeScreenshot(
+  page: Page,
+  encodedScreenshot: string,
+): Promise<ScreenshotEvidence> {
+  return page.evaluate(async (encoded) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${encoded}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('2D canvas context unavailable')
+    context.drawImage(image, 0, 0)
+
+    const pixel = (x: number, y: number) =>
+      context.getImageData(
+        Math.max(0, Math.min(image.width - 1, Math.round(x))),
+        Math.max(0, Math.min(image.height - 1, Math.round(y))),
+        1,
+        1,
+      ).data
+    const luminance = (red: number, green: number, blue: number) =>
+      red * 0.2126 + green * 0.7152 + blue * 0.0722
+    const grassLike = (red: number, green: number, blue: number) =>
+      green > blue * 1.04 && red > blue * 1.03 && green > 18
+
+    const horizonRows: number[] = []
+    const xStep = Math.max(1, Math.round(image.width / 180))
+    const runLength = Math.max(8, Math.round(image.height * 0.012))
+    for (
+      let x = image.width * 0.1;
+      x <= image.width * 0.9;
+      x += xStep
+    ) {
+      for (
+        let y = image.height * 0.3;
+        y <= image.height * 0.62;
+        y += 1
+      ) {
+        let grassSamples = 0
+        for (let offset = 0; offset < runLength; offset += 1) {
+          const [red, green, blue] = pixel(x, y + offset)
+          if (grassLike(red, green, blue)) grassSamples += 1
+        }
+        if (grassSamples >= runLength * 0.42) {
+          horizonRows.push(y)
+          break
+        }
+      }
+    }
+    if (horizonRows.length < 12) {
+      throw new Error(`Only ${horizonRows.length} grass horizon samples found`)
+    }
+    horizonRows.sort((left, right) => left - right)
+    const horizonFraction =
+      horizonRows[Math.floor(horizonRows.length / 2)] / image.height
+
+    const averageRegion = (
+      xStart: number,
+      xEnd: number,
+      yStart: number,
+      yEnd: number,
+    ) => {
+      let red = 0
+      let green = 0
+      let blue = 0
+      let samples = 0
+      const step = Math.max(3, Math.round(image.width / 120))
+      for (let y = image.height * yStart; y < image.height * yEnd; y += step) {
+        for (let x = image.width * xStart; x < image.width * xEnd; x += step) {
+          const color = pixel(x, y)
+          red += color[0]
+          green += color[1]
+          blue += color[2]
+          samples += 1
+        }
+      }
+      return {
+        red: red / samples,
+        green: green / samples,
+        blue: blue / samples,
+        luminance: luminance(red / samples, green / samples, blue / samples),
+      }
+    }
+
+    const openSky = averageRegion(0.18, 0.82, 0.08, 0.3)
+    const foreground = averageRegion(0.1, 0.9, 0.7, 0.94)
+    const horizonColor = averageRegion(0.58, 0.94, 0.3, 0.43)
+
+    const cellSize = Math.max(6, Math.round(image.width / 150))
+    const columns = Math.ceil(image.width / cellSize)
+    const firstRow = Math.floor((image.height * 0.45) / cellSize)
+    const rows = Math.ceil(image.height / cellSize)
+    const flatTerrain = new Uint8Array(columns * rows)
+    let totalVariance = 0
+    let sampledCells = 0
+    const sampleOffsets = [
+      [0.2, 0.2],
+      [0.8, 0.2],
+      [0.5, 0.5],
+      [0.2, 0.8],
+      [0.8, 0.8],
+    ]
+    for (let row = firstRow; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const values = sampleOffsets.map(([offsetX, offsetY]) => {
+          const [red, green, blue] = pixel(
+            (column + offsetX) * cellSize,
+            (row + offsetY) * cellSize,
+          )
+          return { red, green, blue, light: luminance(red, green, blue) }
+        })
+        const lights = values.map((value) => value.light)
+        const variance = Math.max(...lights) - Math.min(...lights)
+        const mean = values.reduce(
+          (result, value) => ({
+            red: result.red + value.red / values.length,
+            green: result.green + value.green / values.length,
+            blue: result.blue + value.blue / values.length,
+          }),
+          { red: 0, green: 0, blue: 0 },
+        )
+        totalVariance += variance
+        sampledCells += 1
+        if (
+          variance < 4.5 &&
+          mean.green > mean.red * 1.035 &&
+          mean.green > mean.blue * 1.08
+        ) {
+          flatTerrain[row * columns + column] = 1
+        }
+      }
+    }
+
+    let largestFlatCells = 0
+    const queue = new Int32Array(columns * rows)
+    for (let row = firstRow; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const origin = row * columns + column
+        if (flatTerrain[origin] !== 1) continue
+        let head = 0
+        let tail = 1
+        queue[0] = origin
+        flatTerrain[origin] = 2
+        while (head < tail) {
+          const current = queue[head]
+          head += 1
+          const currentRow = Math.floor(current / columns)
+          const currentColumn = current % columns
+          const neighbors = [
+            [currentRow - 1, currentColumn],
+            [currentRow + 1, currentColumn],
+            [currentRow, currentColumn - 1],
+            [currentRow, currentColumn + 1],
+          ]
+          for (const [nextRow, nextColumn] of neighbors) {
+            if (
+              nextRow < firstRow ||
+              nextRow >= rows ||
+              nextColumn < 0 ||
+              nextColumn >= columns
+            ) {
+              continue
+            }
+            const next = nextRow * columns + nextColumn
+            if (flatTerrain[next] !== 1) continue
+            flatTerrain[next] = 2
+            queue[tail] = next
+            tail += 1
+          }
+        }
+        largestFlatCells = Math.max(largestFlatCells, tail)
+      }
+    }
+
+    return {
+      horizonFraction,
+      largestFlatTerrainFraction:
+        (largestFlatCells * cellSize * cellSize) /
+        (image.width * image.height),
+      lowerFrameVariance: totalVariance / sampledCells,
+      openSkyLuminance: openSky.luminance,
+      foregroundLuminance: foreground.luminance,
+      horizonColor,
+    }
+  }, encodedScreenshot)
+}
 
 test('loads the meadow and toggles ambience without page errors', async ({
   page,
@@ -438,4 +665,76 @@ test('renders a deterministic shooting-star trail inside the real canvas', async
   )
 
   expect(evidence.hits, JSON.stringify(evidence.samples)).toBeGreaterThanOrEqual(4)
+})
+
+test('matches the reference composition with dense grass and no exposed terrain', async ({
+  page,
+}, testInfo) => {
+  test.slow()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await loadVisualEnvironment(page, { dayPhase: 0.5, weather: 'clear' })
+
+  const screenshot = await page.screenshot({
+    path: testInfo.outputPath('reference-composition.png'),
+  })
+  const evidence = await analyzeScreenshot(
+    page,
+    screenshot.toString('base64'),
+  )
+
+  expect(evidence.horizonFraction).toBeGreaterThanOrEqual(0.43)
+  expect(evidence.horizonFraction).toBeLessThanOrEqual(0.47)
+  expect(evidence.largestFlatTerrainFraction).toBeLessThanOrEqual(0.015)
+  expect(evidence.lowerFrameVariance).toBeGreaterThan(4)
+  expect(errors).toEqual([])
+})
+
+test('keeps weather transitions coherent and moonlit readability restrained', async ({
+  page,
+}, testInfo) => {
+  test.slow()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const cases = [
+    { name: 'day', dayPhase: 0.5, weather: 'clear' as const },
+    { name: 'storm', dayPhase: 0.5, weather: 'storm' as const },
+    { name: 'sunset', dayPhase: 0.72, weather: 'clear' as const },
+    { name: 'twilight', dayPhase: 0.78, weather: 'clear' as const },
+    { name: 'night', dayPhase: 0, weather: 'clear' as const },
+  ]
+  const evidence: Record<string, ScreenshotEvidence> = {}
+
+  for (const scene of cases) {
+    await loadVisualEnvironment(page, scene)
+    const screenshot = await page.screenshot({
+      path: testInfo.outputPath(`${scene.name}.png`),
+    })
+    evidence[scene.name] = await analyzeScreenshot(
+      page,
+      screenshot.toString('base64'),
+    )
+  }
+
+  expect(evidence.storm.openSkyLuminance).toBeLessThan(
+    evidence.day.openSkyLuminance,
+  )
+  expect(
+    evidence.sunset.horizonColor.red -
+      evidence.sunset.horizonColor.blue,
+  ).toBeGreaterThan(
+    evidence.day.horizonColor.red - evidence.day.horizonColor.blue + 8,
+  )
+  expect(evidence.twilight.openSkyLuminance).toBeGreaterThan(
+    evidence.night.openSkyLuminance,
+  )
+  expect(evidence.night.openSkyLuminance).toBeGreaterThan(255 * 0.07)
+  expect(evidence.night.foregroundLuminance).toBeGreaterThan(255 * 0.03)
+  expect(evidence.night.openSkyLuminance).toBeLessThan(
+    evidence.day.openSkyLuminance * 0.55,
+  )
+  expect(evidence.night.foregroundLuminance).toBeLessThan(
+    evidence.day.foregroundLuminance * 0.6,
+  )
+  expect(errors).toEqual([])
 })

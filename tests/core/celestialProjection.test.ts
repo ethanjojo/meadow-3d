@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { getFixedCameraFraming } from '../../src/core/cameraFraming'
 import { getCelestialArcPoint } from '../../src/core/celestial'
-import { projectCelestialPoint } from '../../src/scene/celestialProjection'
+import {
+  getCelestialViewDirection,
+  projectCelestialPoint,
+} from '../../src/scene/celestialProjection'
 
 describe('projectCelestialPoint', () => {
   it.each([
@@ -33,5 +36,27 @@ describe('projectCelestialPoint', () => {
       expect(ndc.z).toBeGreaterThan(0)
       expect(ndc.z).toBeLessThan(1)
     }
+  })
+
+  it('aligns sky scattering with the screen-space celestial arc', () => {
+    const aspect = 1280 / 720
+    const camera = new PerspectiveCamera(46, aspect, 0.1, 180)
+    const framing = getFixedCameraFraming(aspect)
+    camera.position.set(...framing.position)
+    camera.lookAt(...framing.target)
+    camera.updateProjectionMatrix()
+    camera.updateMatrixWorld()
+    const point = getCelestialArcPoint('sun', 0.72, aspect)
+    const direction = new Vector3()
+
+    expect(getCelestialViewDirection(camera, point, direction)).toBe(
+      direction,
+    )
+    const projected = camera.position
+      .clone()
+      .add(direction)
+      .project(camera)
+    expect(projected.x).toBeCloseTo(point.x, 2)
+    expect(projected.y).toBeCloseTo(point.y, 2)
   })
 })

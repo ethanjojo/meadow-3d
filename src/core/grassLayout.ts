@@ -34,17 +34,17 @@ export const GRASS_LAYER_RATIOS = {
 
 export const GRASS_LAYER_PROFILES = {
   foreground: {
-    scale: [0.85, 1.55],
+    scale: [0.25, 1.55],
     lean: [-0.12, 0.12],
     stiffness: [0.45, 0.92],
   },
   middle: {
-    scale: [0.68, 1.3],
+    scale: [0.22, 0.55],
     lean: [-0.16, 0.16],
     stiffness: [0.32, 0.88],
   },
   horizon: {
-    scale: [0.48, 0.9],
+    scale: [0.16, 0.32],
     lean: [-0.14, 0.14],
     stiffness: [0.38, 0.92],
   },
@@ -232,9 +232,18 @@ export function createGrassLayerLayout(
     sampleGrassCluster(x, z, seed, cluster)
     const authoredScale =
       minimumScale + random() * (maximumScale - minimumScale)
+    const perspectiveScale =
+      kind === 'foreground'
+        ? 1.1 - depthProgress * 0.82
+        : kind === 'middle'
+          ? 1.02 - depthProgress * 0.12
+          : 1
     const scale = Math.min(
       storedMaximumScale,
-      Math.max(storedMinimumScale, authoredScale * cluster.height),
+      Math.max(
+        storedMinimumScale,
+        authoredScale * cluster.height * perspectiveScale,
+      ),
     )
     const normalizedScale =
       (scale - minimumScale) / (maximumScale - minimumScale)

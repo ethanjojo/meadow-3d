@@ -9,6 +9,7 @@ import {
   DirectionalLight,
   FogExp2,
   HemisphereLight,
+  PerspectiveCamera,
   ShaderMaterial,
   Vector3,
 } from 'three'
@@ -18,6 +19,7 @@ import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { CelestialBodies } from './CelestialBodies'
+import { getCelestialViewDirection } from './celestialProjection'
 import { CloudLayer } from './CloudLayer'
 import { ShootingStars } from './ShootingStars'
 
@@ -147,6 +149,7 @@ export function Atmosphere({
   const moonRef = useRef<DirectionalLight>(null)
   const hemisphereRef = useRef<HemisphereLight>(null)
   const fogRef = useRef<FogExp2>(null)
+  const skySunDirection = useMemo(() => new Vector3(), [])
   const starsGeometry = useMemo(
     () => createStars(quality.starCount),
     [quality.starCount],
@@ -210,7 +213,7 @@ export function Atmosphere({
     [skyMaterial, starsGeometry, starsMaterial],
   )
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     if (!visible) return
 
     const snapshot = snapshotRef.current
@@ -221,7 +224,16 @@ export function Atmosphere({
 
     skyMaterial.uniforms.uTopColor.value.copy(state.skyTop)
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)
-    skyMaterial.uniforms.uSunDirection.value.set(...sunDirection)
+    if (camera instanceof PerspectiveCamera) {
+      getCelestialViewDirection(
+        camera,
+        celestialPresentationRef.current.sun,
+        skySunDirection,
+      )
+      skyMaterial.uniforms.uSunDirection.value.copy(skySunDirection)
+    } else {
+      skyMaterial.uniforms.uSunDirection.value.set(...sunDirection)
+    }
     skyMaterial.uniforms.uSunGlow.value = state.sunHalo
     skyMaterial.uniforms.uSolarScatter.value = state.solarScatter
     skyMaterial.uniforms.uTwilight.value = state.twilight

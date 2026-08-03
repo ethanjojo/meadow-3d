@@ -74,17 +74,17 @@ describe('layered grass layout', () => {
   it('uses the exact physical ranges for every depth layer', () => {
     expect(GRASS_LAYER_PROFILES).toEqual({
       foreground: {
-        scale: [0.85, 1.55],
+        scale: [0.25, 1.55],
         lean: [-0.12, 0.12],
         stiffness: [0.45, 0.92],
       },
       middle: {
-        scale: [0.68, 1.3],
+        scale: [0.22, 0.55],
         lean: [-0.16, 0.16],
         stiffness: [0.32, 0.88],
       },
       horizon: {
-        scale: [0.48, 0.9],
+        scale: [0.16, 0.32],
         lean: [-0.14, 0.14],
         stiffness: [0.38, 0.92],
       },
@@ -282,6 +282,22 @@ describe('layered grass layout', () => {
       expect(z).toBeLessThanOrEqual(maximum)
       expect(y).toBeCloseTo(terrainHeight(x, z), 5)
     }
+  })
+
+  it('uses perspective-aware foreground height near the horizon', () => {
+    const layout = createGrassLayerLayout(8_000, 'foreground', 4_219)
+    const nearScales: number[] = []
+    const farScales: number[] = []
+    for (let index = 0; index < layout.scales.length; index += 1) {
+      const depth = layout.offsets[index * 3 + 2]
+      if (depth > 1.5) nearScales.push(layout.scales[index])
+      if (depth < -3) farScales.push(layout.scales[index])
+    }
+    const average = (values: number[]) =>
+      values.reduce((sum, value) => sum + value, 0) / values.length
+
+    expect(average(farScales)).toBeLessThan(average(nearScales) * 0.88)
+    expect(Math.max(...nearScales)).toBeGreaterThan(1.35)
   })
 
   it.each<[
