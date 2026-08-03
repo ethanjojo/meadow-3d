@@ -28,8 +28,10 @@ export const grassVertexShader = /* glsl */ `
   void main() {
     float heightRatio = clamp(position.y, 0.0, 1.0);
     float tipInfluence = heightRatio * heightRatio * heightRatio;
+    float cameraDistance = distance(cameraPosition.xz, instanceOffset.xz);
+    float cameraClearance = smoothstep(1.6, 8.0, cameraDistance);
     vec3 localPosition = position;
-    localPosition.y *= instanceScale;
+    localPosition.y *= instanceScale * mix(0.15, 1.0, cameraClearance);
     localPosition.xz *= instanceWidth;
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 

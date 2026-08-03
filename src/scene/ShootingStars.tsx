@@ -9,7 +9,10 @@ import {
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
-import { getShootingStarState } from '../core/celestial'
+import {
+  getShootingStarState,
+  projectShootingStarTrail,
+} from '../core/celestial'
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 
@@ -80,27 +83,9 @@ export function ShootingStars({
     trails.forEach((trail, slot) => {
       const line = trailsRef.current[slot]
       const positions = trail.geometry.getAttribute('position') as BufferAttribute
-      const tailProgress = Math.max(
-        0,
-        activeState.progress - (reducedMotion ? 0.22 : 0.38),
-      )
-
-      head
-        .set(
-          activeState.start[0] + activeState.direction[0] * activeState.progress,
-          activeState.start[1] + activeState.direction[1] * activeState.progress,
-          activeState.start[2] + activeState.direction[2] * activeState.progress,
-        )
-        .normalize()
-        .multiplyScalar(76)
-      tail
-        .set(
-          activeState.start[0] + activeState.direction[0] * tailProgress,
-          activeState.start[1] + activeState.direction[1] * tailProgress,
-          activeState.start[2] + activeState.direction[2] * tailProgress,
-        )
-        .normalize()
-        .multiplyScalar(76)
+      const projected = projectShootingStarTrail(activeState, reducedMotion)
+      head.set(...projected.head)
+      tail.set(...projected.tail)
 
       positions.setXYZ(0, tail.x, tail.y, tail.z)
       positions.setXYZ(1, head.x, head.y, head.z)

@@ -17,6 +17,11 @@ export interface ShootingStarState {
   brightness: number
 }
 
+export interface ShootingStarTrail {
+  head: readonly [number, number, number]
+  tail: readonly [number, number, number]
+}
+
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value))
 }
@@ -89,5 +94,26 @@ export function getShootingStarState(
     start: [startX, startY, startZ],
     direction: [travelX, travelY, 0.08],
     brightness: fade * clamp01(nightAmount),
+  }
+}
+
+export function projectShootingStarTrail(
+  state: ShootingStarState,
+  reducedMotion: boolean,
+): ShootingStarTrail {
+  const tailProgress = Math.max(
+    0,
+    state.progress - (reducedMotion ? 0.22 : 0.38),
+  )
+  const project = (progress: number) =>
+    [
+      (state.start[0] + state.direction[0] * progress) * 14,
+      3.5 + (state.start[1] + state.direction[1] * progress) * 6,
+      -24 + (state.start[2] + state.direction[2] * progress) * 2,
+    ] as const
+
+  return {
+    head: project(state.progress),
+    tail: project(tailProgress),
   }
 }

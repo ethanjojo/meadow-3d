@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getCelestialState, getShootingStarState } from '../../src/core/celestial'
+import {
+  getCelestialState,
+  getShootingStarState,
+  projectShootingStarTrail,
+} from '../../src/core/celestial'
 
 describe('celestial state', () => {
   it('places moon opposite the sun and hides bodies below the horizon', () => {
@@ -20,6 +24,17 @@ describe('celestial state', () => {
     expect(first.progress).toBeGreaterThanOrEqual(0)
     expect(first.progress).toBeLessThanOrEqual(1)
     expect(getShootingStarState(420, 731, 0, 0).brightness).toBe(0)
+  })
+
+  it('projects shooting-star trails into the visible sky volume', () => {
+    const state = getShootingStarState(96.08, 731, 1, 1)
+    const trail = projectShootingStarTrail(state, false)
+
+    expect(state.active).toBe(true)
+    expect(trail.head[1]).toBeGreaterThan(5)
+    expect(trail.head[2]).toBeLessThan(-20)
+    expect(trail.tail[0]).not.toBeCloseTo(trail.head[0])
+    expect(trail.tail[1]).toBeGreaterThan(5)
   })
 
   it('shares one 45-to-120-second event timeline across the production pool', () => {
