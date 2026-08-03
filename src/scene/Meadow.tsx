@@ -16,6 +16,7 @@ import {
 import type { AtmosphereState } from '../core/atmosphere'
 import {
   createGrassLayerLayout,
+  getGrassBendLimit,
   getGrassLayerBudgets,
   terrainHeight,
   type GrassLayerKind,
@@ -33,6 +34,7 @@ interface MeadowProps {
   seasonRef: MutableRefObject<SeasonAppearance>
   atmosphereRef: MutableRefObject<AtmosphereState>
   effectsRef: MutableRefObject<WeatherEffects>
+  reducedMotion: boolean
 }
 
 interface GrassLayerDefinition {
@@ -169,6 +171,8 @@ function createGrassMaterial(layerFade: number) {
       uWindDirection: { value: new Vector2(1, 0) },
       uGustOrigin: { value: GUST_ORIGIN.clone() },
       uGustSpeed: { value: 1.8 },
+      uBendLimit: { value: getGrassBendLimit(0.5, false) },
+      uFlutterStrength: { value: 0.012 },
       uGrassBase: { value: new Color('#4d7f32') },
       uGrassTip: { value: new Color('#83a84e') },
       uDryColor: { value: DRY_COLOR.clone() },
@@ -195,6 +199,7 @@ export function Meadow({
   seasonRef,
   atmosphereRef,
   effectsRef,
+  reducedMotion,
 }: MeadowProps) {
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
   const layers = useMemo(() => {
@@ -225,15 +230,21 @@ export function Meadow({
     const atmosphere = atmosphereRef.current
     const effects = effectsRef.current
     const wetness = Math.max(snapshot.weather.wetness, effects.dew * 0.45)
+    const windStrength = snapshot.weather.windStrength
+    const bendLimit = getGrassBendLimit(windStrength, reducedMotion)
+    const flutterStrength =
+      (reducedMotion ? 0.005 : 0.014) * (0.3 + windStrength * 0.7)
 
     for (const layer of layers) {
       const { uniforms } = layer.material
       uniforms.uTime.value = snapshot.elapsed
-      uniforms.uWindStrength.value = snapshot.weather.windStrength
+      uniforms.uWindStrength.value = windStrength
       uniforms.uWindDirection.value
         .set(...snapshot.weather.windDirection)
         .normalize()
-      uniforms.uGustSpeed.value = 1.2 + snapshot.weather.windStrength * 2.8
+      uniforms.uGustSpeed.value = 1.2 + windStrength * 2.8
+      uniforms.uBendLimit.value = bendLimit
+      uniforms.uFlutterStrength.value = flutterStrength
       uniforms.uGrassBase.value.copy(season.grassColor)
       uniforms.uGrassTip.value.copy(season.tipColor)
       uniforms.uDryness.value = season.dryness

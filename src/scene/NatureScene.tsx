@@ -320,6 +320,7 @@ export function NatureScene({
         seasonRef={seasonRef}
         atmosphereRef={atmosphereRef}
         effectsRef={effectsRef}
+        reducedMotion={reducedMotion}
       />
       <WeatherParticles
         quality={quality}

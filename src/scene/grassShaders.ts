@@ -13,6 +13,8 @@ export const grassVertexShader = /* glsl */ `
   uniform vec2 uWindDirection;
   uniform vec2 uGustOrigin;
   uniform float uGustSpeed;
+  uniform float uBendLimit;
+  uniform float uFlutterStrength;
 
   varying float vHeight;
   varying float vVariation;
@@ -27,11 +29,14 @@ export const grassVertexShader = /* glsl */ `
 
   void main() {
     float heightRatio = clamp(position.y, 0.0, 1.0);
-    float tipInfluence = heightRatio * heightRatio * heightRatio;
+    float rootInfluence = pow(smoothstep(0.38, 1.0, heightRatio), 2.0);
     float cameraDistance = distance(cameraPosition.xz, instanceOffset.xz);
     float cameraClearance = smoothstep(1.6, 8.0, cameraDistance);
+    float clearanceHeight = mix(0.15, 1.0, cameraClearance);
+    float clearanceLean = cameraClearance;
+    float clearanceWind = cameraClearance;
     vec3 localPosition = position;
-    localPosition.y *= instanceScale * mix(0.15, 1.0, cameraClearance);
+    localPosition.y *= instanceScale * clearanceHeight;
     localPosition.xz *= instanceWidth;
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 
@@ -43,21 +48,30 @@ export const grassVertexShader = /* glsl */ `
     );
     float gustPosition = mod(flowPosition - uTime * uGustSpeed + 36.0, 72.0) - 36.0;
     float gustFront =
-      smoothstep(-5.5, -0.8, gustPosition) *
-      (1.0 - smoothstep(0.8, 6.5, gustPosition));
+      smoothstep(-4.0, 0.0, gustPosition) *
+      (1.0 - smoothstep(0.0, 8.0, gustPosition));
     float crossWave = sin(
       dot(relativePosition, vec2(-windDirection.y, windDirection.x)) * 0.28 +
       uTime * 0.31 +
       instancePhase * 0.7
     );
     float flexibility = 1.0 - instanceStiffness * 0.62;
-    float bend =
+    float waveSignal =
       (broadWave * 0.42 + gustFront * (0.48 + crossWave * 0.18)) *
-      (0.11 + uWindStrength * 0.56) *
-      flexibility;
+      (0.11 + uWindStrength * 0.56);
+    float targetAngle = clamp(waveSignal * flexibility, -uBendLimit, uBendLimit);
+    float flutter =
+      sin(uTime * 5.2 + instancePhase * 2.3 + flowPosition * 0.37) *
+      uFlutterStrength *
+      uWindStrength *
+      (1.0 - instanceStiffness);
+    targetAngle = clamp(targetAngle + flutter, -uBendLimit, uBendLimit);
+    float curvatureAngle = targetAngle * rootInfluence * clearanceWind;
+    vec2 bendOffset = windDirection * sin(curvatureAngle) * heightRatio;
 
-    localPosition.x += instanceLean * tipInfluence * instanceScale;
-    localPosition.xz += windDirection * bend * tipInfluence * instanceScale;
+    localPosition.xz += bendOffset;
+    localPosition.y *= max(0.72, cos(curvatureAngle));
+    localPosition.x += instanceLean * rootInfluence * clearanceLean;
 
     vec4 worldPosition = modelMatrix * vec4(localPosition + instanceOffset, 1.0);
     vec4 viewPosition = viewMatrix * worldPosition;
@@ -67,9 +81,9 @@ export const grassVertexShader = /* glsl */ `
     vVariation = instanceColorVariation;
     vViewDepth = -viewPosition.z;
     vBladeNormal = normalize(vec3(
-      -windDirection.x * bend * 0.5 - instanceLean * 0.24,
+      -windDirection.x * curvatureAngle * 0.5 - instanceLean * 0.24,
       1.0,
-      -windDirection.y * bend * 0.5
+      -windDirection.y * curvatureAngle * 0.5
     ));
   }
 `

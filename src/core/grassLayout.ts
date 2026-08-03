@@ -20,6 +20,31 @@ export const GRASS_LAYER_RATIOS = {
   horizon: 0.45,
 } as const satisfies Record<GrassLayerKind, number>
 
+export const GRASS_LAYER_PROFILES = {
+  foreground: {
+    scale: [0.85, 1.55],
+    lean: [-0.12, 0.12],
+    stiffness: [0.45, 0.92],
+  },
+  middle: {
+    scale: [0.68, 1.3],
+    lean: [-0.16, 0.16],
+    stiffness: [0.32, 0.88],
+  },
+  horizon: {
+    scale: [0.48, 0.9],
+    lean: [-0.14, 0.14],
+    stiffness: [0.38, 0.92],
+  },
+} as const satisfies Record<
+  GrassLayerKind,
+  {
+    scale: readonly [number, number]
+    lean: readonly [number, number]
+    stiffness: readonly [number, number]
+  }
+>
+
 const LAYER_BANDS = {
   foreground: { near: 5, far: -4.5, nearHalfWidth: 1.2, farHalfWidth: 8.2 },
   middle: { near: -3.5, far: -16, nearHalfWidth: 7.2, farHalfWidth: 16 },
@@ -29,11 +54,37 @@ const LAYER_BANDS = {
   { near: number; far: number; nearHalfWidth: number; farHalfWidth: number }
 >
 
-const LAYER_SCALE_RANGES = {
-  foreground: [0.8, 1.7],
-  middle: [0.68, 1.35],
-  horizon: [0.48, 0.92],
-} as const satisfies Record<GrassLayerKind, readonly [number, number]>
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value))
+}
+
+function smoothstep(minimum: number, maximum: number, value: number) {
+  const amount = clamp01((value - minimum) / (maximum - minimum))
+  return amount * amount * (3 - 2 * amount)
+}
+
+export function getGrassRootInfluence(heightRatio: number) {
+  return smoothstep(0.38, 1, heightRatio) ** 2
+}
+
+export function getGrassBendLimit(
+  windStrength: number,
+  reducedMotion: boolean,
+) {
+  const calmLimit = (18 * Math.PI) / 180
+  const stormLimit = (32 * Math.PI) / 180
+  const limit = calmLimit + (stormLimit - calmLimit) * clamp01(windStrength)
+  return limit * (reducedMotion ? 0.55 : 1)
+}
+
+export function getGrassClearance(distance: number) {
+  const clearance = smoothstep(1.6, 8, Math.max(0, distance))
+  return {
+    height: 0.15 + clearance * 0.85,
+    lean: clearance,
+    wind: clearance,
+  }
+}
 
 function createMulberry32(seed: number) {
   let state = seed >>> 0
@@ -74,7 +125,10 @@ export function createGrassLayerLayout(
 ): GrassLayerLayout {
   const bladeCount = Math.max(0, Math.floor(count))
   const band = LAYER_BANDS[kind]
-  const [minimumScale, maximumScale] = LAYER_SCALE_RANGES[kind]
+  const profile = GRASS_LAYER_PROFILES[kind]
+  const [minimumScale, maximumScale] = profile.scale
+  const [minimumLean, maximumLean] = profile.lean
+  const [minimumStiffness, maximumStiffness] = profile.stiffness
   const random = createMulberry32(seed)
   const offsets = new Float32Array(bladeCount * 3)
   const scales = new Float32Array(bladeCount)
@@ -97,12 +151,21 @@ export function createGrassLayerLayout(
     offsets[offsetIndex] = x
     offsets[offsetIndex + 1] = terrainHeight(x, z)
     offsets[offsetIndex + 2] = z
-    scales[index] = minimumScale + random() * (maximumScale - minimumScale)
+    const scale = minimumScale + random() * (maximumScale - minimumScale)
+    const normalizedScale =
+      (scale - minimumScale) / (maximumScale - minimumScale)
+    const stiffnessRange = maximumStiffness - minimumStiffness
+    scales[index] = scale
     phases[index] = random() * Math.PI * 2
-    stiffness[index] = 0.15 + random() * 0.8
+    stiffness[index] = Math.min(
+      maximumStiffness,
+      minimumStiffness +
+        random() * stiffnessRange * 0.65 +
+        normalizedScale * stiffnessRange * 0.35,
+    )
     yaw[index] = random() * Math.PI * 2
     widths[index] = 0.7 + random() * 0.72
-    leans[index] = (random() * 2 - 1) * 0.26
+    leans[index] = minimumLean + random() * (maximumLean - minimumLean)
     colorVariation[index] = random()
   }
 
