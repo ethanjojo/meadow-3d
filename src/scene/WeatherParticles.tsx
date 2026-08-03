@@ -13,6 +13,8 @@ import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import {
+  RAIN_STREAK_FALL_DISTANCE,
+  RAIN_STREAK_WIND_DRIFT,
   deriveRainStreakOrientation,
   type WeatherEffects,
 } from '../core/weather'
@@ -47,7 +49,7 @@ const particleVertexShader = /* glsl */ `
       animated.y += sin(position.x * 0.5 + uTime * 0.62) * 0.22;
     } else if (uKind < 1.5) {
       animated.y = mod(position.y + 3.0 - uTime * uFallSpeed, 15.0) - 2.0;
-      animated.xz += uWindDirection * uWindStrength * 0.85 * (12.0 - animated.y) / 14.0;
+      animated.xz += uWindDirection * uWindStrength * ${RAIN_STREAK_WIND_DRIFT.toFixed(2)} * (12.0 - animated.y) / ${RAIN_STREAK_FALL_DISTANCE.toFixed(1)};
     } else if (uKind < 2.5) {
       animated.y = mod(position.y + 3.0 - uTime * uFallSpeed, 15.0) - 2.0;
       animated.xz += uWindDirection * uWindStrength * 0.24;

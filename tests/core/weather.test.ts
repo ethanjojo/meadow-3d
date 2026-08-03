@@ -149,14 +149,22 @@ describe('getWeatherOpacity', () => {
     expect(deriveDawn('fog').dew).toBe(0)
   })
 
-  it('leans rain streak orientation along the shared wind vector', () => {
+  it('matches rain streak orientation to the center trajectory', () => {
     const calm = deriveRainStreakOrientation([1, 0], 0)
     const eastWind = deriveRainStreakOrientation([1, 0], 0.8)
     const westWind = deriveRainStreakOrientation([-1, 0], 0.8)
+    const diagonalWind = deriveRainStreakOrientation([3, 4], 0.8)
 
     expect(calm).toEqual({ x: 0, y: -1, z: 0 })
     expect(eastWind.x).toBeGreaterThan(0)
     expect(westWind.x).toBeLessThan(0)
+    expect(Math.abs(eastWind.x / eastWind.y)).toBeCloseTo(
+      0.04857142857142858,
+    )
+    expect(
+      Math.hypot(diagonalWind.x, diagonalWind.z) /
+        Math.abs(diagonalWind.y),
+    ).toBeCloseTo(0.04857142857142858)
   })
 
   it('suppresses fast storm flashes for reduced motion', () => {

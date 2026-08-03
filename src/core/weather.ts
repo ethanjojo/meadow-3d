@@ -20,6 +20,9 @@ export interface RainStreakOrientation {
   z: number
 }
 
+export const RAIN_STREAK_WIND_DRIFT = 0.85
+export const RAIN_STREAK_FALL_DISTANCE = 14
+
 interface WeatherEffectInput {
   elapsed: number
   dayPhase: number
@@ -139,7 +142,10 @@ export function deriveRainStreakOrientation(
   target?: RainStreakOrientation,
 ): RainStreakOrientation {
   const length = Math.hypot(windDirection[0], windDirection[1]) || 1
-  const lean = clamp01(windStrength) * 0.85
+  const lean =
+    clamp01(windStrength) *
+    RAIN_STREAK_WIND_DRIFT /
+    RAIN_STREAK_FALL_DISTANCE
   const orientation = target ?? { x: 0, y: -1, z: 0 }
   orientation.x = windDirection[0] / length * lean
   orientation.y = -1
