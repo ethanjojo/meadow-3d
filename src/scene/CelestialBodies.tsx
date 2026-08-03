@@ -16,6 +16,12 @@ import type {
   CelestialPresentation,
 } from '../core/celestial'
 import { projectCelestialPoint } from './celestialProjection'
+import {
+  celestialDiscVertexShader,
+  getSolarDiscAppearance,
+  sunDiscFragmentShader,
+  type SolarDiscAppearance,
+} from './celestialShaders'
 import { getBloomEmissionScale } from './postProcessingShaders'
 
 interface CelestialBodiesProps {
@@ -93,15 +99,27 @@ export function CelestialBodies({
   const moonDiscRef = useRef<Mesh>(null)
   const moonHaloRef = useRef<Mesh>(null)
   const position = useMemo(() => new Vector3(), [])
+  const solarAppearanceRef = useRef<SolarDiscAppearance>({
+    warmth: 0,
+    hardDisc: 1,
+    haloScale: 1,
+    discScale: 1,
+  })
   const bloomEnabled = quality.postprocessing
   const materials = useMemo(
     () => ({
-      sunDisc: new MeshBasicMaterial({
-        color: new Color('#fff0bd').multiplyScalar(
-          getBloomEmissionScale(bloomEnabled, 'sun'),
-        ),
+      sunDisc: new ShaderMaterial({
+        vertexShader: celestialDiscVertexShader,
+        fragmentShader: sunDiscFragmentShader,
+        uniforms: {
+          uOpacity: { value: 0 },
+          uWarmth: { value: 0 },
+          uHardDisc: { value: 1 },
+          uEmissionScale: {
+            value: getBloomEmissionScale(bloomEnabled, 'sun'),
+          },
+        },
         transparent: true,
-        opacity: 0,
         depthTest: true,
         depthWrite: false,
         blending: AdditiveBlending,
@@ -150,6 +168,25 @@ export function CelestialBodies({
       sunHaloRef.current,
       position,
     )
+    const solarAppearance = getSolarDiscAppearance(
+      atmosphere.sunElevation,
+      atmosphere.solarScatter,
+      solarAppearanceRef.current,
+    )
+    if (sunDiscRef.current) {
+      sunDiscRef.current.scale.set(
+        solarAppearance.discScale,
+        presentation.sun.scaleY * solarAppearance.discScale,
+        1,
+      )
+    }
+    if (sunHaloRef.current) {
+      sunHaloRef.current.scale.set(
+        solarAppearance.haloScale,
+        presentation.sun.scaleY * solarAppearance.haloScale,
+        1,
+      )
+    }
     placeBody(
       camera,
       presentation.moon,
@@ -158,8 +195,10 @@ export function CelestialBodies({
       position,
     )
 
-    materials.sunDisc.opacity =
+    materials.sunDisc.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunVisibility
+    materials.sunDisc.uniforms.uWarmth.value = solarAppearance.warmth
+    materials.sunDisc.uniforms.uHardDisc.value = solarAppearance.hardDisc
     materials.sunHalo.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunHalo * 0.62
     materials.moonDisc.opacity =
