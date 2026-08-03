@@ -294,7 +294,7 @@ textarea {
   }
 }
 
-@media (min-width: 321px) and (max-width: 480px) {
+@media (min-width: 320px) and (max-width: 480px) {
   .environment-panel {
     position: fixed;
     right: max(var(--space-edge), env(safe-area-inset-right));

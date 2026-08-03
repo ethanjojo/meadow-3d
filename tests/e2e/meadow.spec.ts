@@ -58,8 +58,10 @@ test('keeps the environment popover inside a short viewport', async ({ page }) =
   await expect(panel).toBeFocused()
 
   const bounds = await panel.boundingBox()
-  expect(bounds).not.toBeNull()
-  expect(bounds?.y).toBeGreaterThanOrEqual(16)
+  if (!bounds) throw new Error('Environment panel has no visible bounds')
+  expect(bounds.x).toBeGreaterThanOrEqual(16)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(304)
+  expect(bounds.y).toBeGreaterThanOrEqual(16)
 })
 
 test('manually controls the environment and returns to auto', async ({ page }) => {
@@ -67,13 +69,27 @@ test('manually controls the environment and returns to auto', async ({ page }) =
   await page.goto('/')
 
   await page.getByRole('button', { name: /nastavení prostředí/i }).click()
-  await page.getByRole('radio', { name: /ručně/i }).check({ force: true })
-  await page.getByRole('radio', { name: /zima/i }).check({ force: true })
-  await page.getByRole('radio', { name: /sněžení/i }).check({ force: true })
+  const manual = page.getByRole('radio', { name: /ručně/i })
+  await expect(manual).toBeVisible()
+  await expect(manual).toBeEnabled()
+  await manual.check()
+
+  const winter = page.getByRole('radio', { name: /zima/i })
+  await expect(winter).toBeVisible()
+  await expect(winter).toBeEnabled()
+  await winter.check()
+
+  const snow = page.getByRole('radio', { name: /sněžení/i })
+  await expect(snow).toBeVisible()
+  await expect(snow).toBeEnabled()
+  await snow.check()
 
   const main = page.getByRole('main', { name: 'Živá louka' })
   await expect(main).toHaveAttribute('data-weather', 'snow')
 
-  await page.getByRole('radio', { name: /^auto$/i }).check({ force: true })
+  const auto = page.getByRole('radio', { name: /^auto$/i })
+  await expect(auto).toBeVisible()
+  await expect(auto).toBeEnabled()
+  await auto.check()
   await expect(main).toHaveAttribute('data-simulation-mode', 'auto')
 })
