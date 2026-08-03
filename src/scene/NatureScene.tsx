@@ -7,6 +7,7 @@ import {
 } from '../core/natureClock'
 import { QUALITY_PROFILES, type QualityTier } from '../core/quality'
 import { getSeasonAppearance } from '../core/season'
+import type { SimulationSettings } from '../core/simulation'
 import { Atmosphere } from './Atmosphere'
 import { CinematicCamera } from './CinematicCamera'
 import { Meadow } from './Meadow'
@@ -18,6 +19,7 @@ interface NatureSceneProps {
   visible: boolean
   recordFrame?: (deltaSeconds: number) => void
   onNatureSample?: (snapshot: NatureSnapshot) => void
+  simulationSettings: SimulationSettings
 }
 
 const DAY_START_OFFSET = DEFAULT_CLOCK.dayDuration * 0.31

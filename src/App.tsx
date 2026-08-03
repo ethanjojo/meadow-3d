@@ -3,18 +3,39 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { ACESFilmicToneMapping } from 'three'
 import { createAmbientAudio, type AmbientAudioController } from './audio/ambientAudio'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
+import { EnvironmentSettings } from './components/EnvironmentSettings'
 import { SoundToggle } from './components/SoundToggle'
 import { StaticFallback } from './components/StaticFallback'
 import { QUALITY_PROFILES } from './core/quality'
+import {
+  DEFAULT_SIMULATION_SETTINGS,
+  parseSimulationSettings,
+  type SimulationSettings,
+} from './core/simulation'
 import { hasWebGLSupport } from './core/webgl'
 import { useAdaptiveQuality } from './hooks/useAdaptiveQuality'
 import { usePageVisibility } from './hooks/usePageVisibility'
 import { NatureScene } from './scene/NatureScene'
 import './styles.css'
 
+const ENVIRONMENT_STORAGE_KEY = 'living-meadow:environment'
+
+function getInitialSimulationSettings(): SimulationSettings {
+  try {
+    return parseSimulationSettings(
+      JSON.parse(localStorage.getItem(ENVIRONMENT_STORAGE_KEY) ?? 'null'),
+    )
+  } catch {
+    return DEFAULT_SIMULATION_SETTINGS
+  }
+}
+
 export function App() {
   const visible = usePageVisibility()
   const [soundEnabled, setSoundEnabled] = useState(false)
+  const [simulationSettings, setSimulationSettings] = useState(
+    getInitialSimulationSettings,
+  )
   const audioRef = useRef<AmbientAudioController | null>(null)
   const webglAvailable = useMemo(hasWebGLSupport, [])
   const reducedMotion = useMemo(
@@ -51,6 +72,18 @@ export function App() {
   const handleNatureSample = useCallback(
     (snapshot: Parameters<AmbientAudioController['setNature']>[0]) => {
       audioRef.current?.setNature(snapshot)
+    },
+    [],
+  )
+
+  const handleSimulationSettingsChange = useCallback(
+    (next: SimulationSettings) => {
+      setSimulationSettings(next)
+      try {
+        localStorage.setItem(ENVIRONMENT_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // Controls remain usable when storage is unavailable.
+      }
     },
     [],
   )
@@ -92,6 +125,7 @@ export function App() {
                 visible={visible}
                 recordFrame={recordFrame}
                 onNatureSample={handleNatureSample}
+                simulationSettings={simulationSettings}
               />
             </Suspense>
           </Canvas>
@@ -101,6 +135,10 @@ export function App() {
       )}
       {webglAvailable ? (
         <div className="experience-controls">
+          <EnvironmentSettings
+            value={simulationSettings}
+            onChange={handleSimulationSettingsChange}
+          />
           <SoundToggle enabled={soundEnabled} onChange={handleSoundChange} />
         </div>
       ) : null}
