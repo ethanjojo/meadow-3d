@@ -18,8 +18,8 @@ export interface ShootingStarState {
 }
 
 export interface ShootingStarTrail {
-  head: readonly [number, number, number]
-  tail: readonly [number, number, number]
+  head: [number, number, number]
+  tail: [number, number, number]
 }
 
 function clamp01(value: number) {
@@ -100,20 +100,22 @@ export function getShootingStarState(
 export function projectShootingStarTrail(
   state: ShootingStarState,
   reducedMotion: boolean,
+  target: ShootingStarTrail = {
+    head: [0, 0, 0],
+    tail: [0, 0, 0],
+  },
 ): ShootingStarTrail {
   const tailProgress = Math.max(
     0,
     state.progress - (reducedMotion ? 0.22 : 0.38),
   )
-  const project = (progress: number) =>
-    [
-      (state.start[0] + state.direction[0] * progress) * 14,
-      3.5 + (state.start[1] + state.direction[1] * progress) * 6,
-      -24 + (state.start[2] + state.direction[2] * progress) * 2,
-    ] as const
-
-  return {
-    head: project(state.progress),
-    tail: project(tailProgress),
+  const project = (progress: number, point: ShootingStarTrail['head']) => {
+    point[0] = (state.start[0] + state.direction[0] * progress) * 0.72
+    point[1] = state.start[1] + state.direction[1] * progress
+    point[2] = 0.8
   }
+
+  project(state.progress, target.head)
+  project(tailProgress, target.tail)
+  return target
 }

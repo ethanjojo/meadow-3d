@@ -30,6 +30,17 @@ function createTrailGeometry() {
   return geometry
 }
 
+function getForcedDevelopmentElapsed() {
+  if (!import.meta.env.DEV) return null
+
+  const rawElapsed = new URLSearchParams(window.location.search).get(
+    '__e2eMeteor',
+  )
+  if (rawElapsed === null) return null
+  const elapsed = Number(rawElapsed)
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null
+}
+
 export function ShootingStars({
   quality,
   snapshotRef,
@@ -56,6 +67,14 @@ export function ShootingStars({
   )
   const head = useMemo(() => new Vector3(), [])
   const tail = useMemo(() => new Vector3(), [])
+  const projectedTrail = useMemo(
+    () => ({
+      head: [0, 0, 0] as [number, number, number],
+      tail: [0, 0, 0] as [number, number, number],
+    }),
+    [],
+  )
+  const forcedElapsed = useMemo(getForcedDevelopmentElapsed, [])
 
   useEffect(
     () => () => {
@@ -67,12 +86,13 @@ export function ShootingStars({
     [trails],
   )
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     if (!visible) return
 
     const snapshot = snapshotRef.current
     const atmosphere = atmosphereRef.current
-    const elapsed = snapshot.autoElapsed * (reducedMotion ? 0.45 : 1)
+    const elapsed =
+      forcedElapsed ?? snapshot.autoElapsed * (reducedMotion ? 0.45 : 1)
     const schedules = [0, 1, 2].map((slot) =>
       getShootingStarState(elapsed, 731, slot, atmosphere.starOpacity),
     )
@@ -83,9 +103,13 @@ export function ShootingStars({
     trails.forEach((trail, slot) => {
       const line = trailsRef.current[slot]
       const positions = trail.geometry.getAttribute('position') as BufferAttribute
-      const projected = projectShootingStarTrail(activeState, reducedMotion)
-      head.set(...projected.head)
-      tail.set(...projected.tail)
+      const projected = projectShootingStarTrail(
+        activeState,
+        reducedMotion,
+        projectedTrail,
+      )
+      head.set(...projected.head).unproject(camera)
+      tail.set(...projected.tail).unproject(camera)
 
       positions.setXYZ(0, tail.x, tail.y, tail.z)
       positions.setXYZ(1, head.x, head.y, head.z)

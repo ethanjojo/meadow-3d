@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { PerspectiveCamera, Vector3 } from 'three'
 import {
   getCelestialState,
   getShootingStarState,
   projectShootingStarTrail,
+  type ShootingStarState,
 } from '../../src/core/celestial'
 
 describe('celestial state', () => {
@@ -31,10 +33,52 @@ describe('celestial state', () => {
     const trail = projectShootingStarTrail(state, false)
 
     expect(state.active).toBe(true)
-    expect(trail.head[1]).toBeGreaterThan(5)
-    expect(trail.head[2]).toBeLessThan(-20)
+    expect(Math.abs(trail.head[0])).toBeLessThan(0.9)
+    expect(Math.abs(trail.head[1])).toBeLessThan(0.9)
+    expect(trail.head[2]).toBeGreaterThan(-1)
+    expect(trail.head[2]).toBeLessThan(1)
     expect(trail.tail[0]).not.toBeCloseTo(trail.head[0])
-    expect(trail.tail[1]).toBeGreaterThan(5)
+  })
+
+  it.each([
+    ['desktop', 1280, 720],
+    ['mobile', 390, 844],
+  ])('keeps the first 100 scheduled trails inside the %s camera frustum', (
+    _name,
+    width,
+    height,
+  ) => {
+    const camera = new PerspectiveCamera(46, width / height, 0.1, 180)
+    camera.position.set(0, 1.08, 5.4)
+    camera.lookAt(0, 0.78, -5)
+    camera.updateProjectionMatrix()
+    camera.updateMatrixWorld()
+
+    const states: ShootingStarState[] = []
+    let lastWindow = -1
+    for (let elapsed = 0; elapsed < 15_000 && states.length < 100; elapsed += 0.1) {
+      const window = Math.floor(elapsed / 82.5)
+      if (window === lastWindow) continue
+
+      for (let slot = 0; slot < 3; slot += 1) {
+        const state = getShootingStarState(elapsed, 731, slot, 1)
+        if (state.active && state.progress >= 0.4) {
+          states.push(state)
+          lastWindow = window
+          break
+        }
+      }
+    }
+
+    expect(states).toHaveLength(100)
+    for (const state of states) {
+      const trail = projectShootingStarTrail(state, false)
+      for (const point of [trail.head, trail.tail]) {
+        const projected = new Vector3(...point).unproject(camera).project(camera)
+        expect(Math.abs(projected.x)).toBeLessThanOrEqual(0.92)
+        expect(Math.abs(projected.y)).toBeLessThanOrEqual(0.92)
+      }
+    }
   })
 
   it('shares one 45-to-120-second event timeline across the production pool', () => {
