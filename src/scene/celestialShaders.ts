@@ -55,13 +55,29 @@ export const sunDiscFragmentShader = /* glsl */ `
 `
 
 export const moonDiscFragmentShader = /* glsl */ `
-  uniform vec3 uColor;
   uniform float uOpacity;
+  uniform sampler2D uMoonSurface;
+  uniform float uUseSurface;
+  uniform float uLunarAmbient;
   varying vec2 vUv;
 
   void main() {
-    float radius = length(vUv - 0.5) * 2.0;
+    vec2 disc = (vUv - 0.5) * 2.0;
+    float radius = length(disc);
     float alpha = 1.0 - smoothstep(0.9, 1.0, radius);
-    gl_FragColor = vec4(uColor, alpha * uOpacity);
+    float sphereZ = sqrt(max(0.0, 1.0 - dot(disc, disc)));
+    vec3 surfaceNormal = normalize(vec3(disc, sphereZ));
+    float lunarLight = max(
+      dot(surfaceNormal, normalize(vec3(-0.28, 0.18, 0.94))),
+      0.0
+    );
+    float sampledAlbedo = texture2D(uMoonSurface, vUv).r;
+    float analyticAlbedo =
+      0.68 + sin(vUv.x * 34.0) * sin(vUv.y * 29.0) * 0.045;
+    float albedo = mix(analyticAlbedo, sampledAlbedo, uUseSurface);
+    vec3 moonColor = vec3(0.7, 0.8, 0.96) * albedo;
+    float illumination =
+      mix(0.34, 1.0, lunarLight) + uLunarAmbient * 0.28;
+    gl_FragColor = vec4(moonColor * illumination, alpha * uOpacity);
   }
 `

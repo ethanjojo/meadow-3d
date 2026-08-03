@@ -1,4 +1,4 @@
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
   AdditiveBlending,
@@ -7,6 +7,7 @@ import {
   MeshBasicMaterial,
   PerspectiveCamera,
   ShaderMaterial,
+  TextureLoader,
   Vector3,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
@@ -19,9 +20,14 @@ import { projectCelestialPoint } from './celestialProjection'
 import {
   celestialDiscVertexShader,
   getSolarDiscAppearance,
+  moonDiscFragmentShader,
   sunDiscFragmentShader,
   type SolarDiscAppearance,
 } from './celestialShaders'
+import {
+  createMoonTextureFallback,
+  loadMoonTexture,
+} from './celestialTextures'
 import { getBloomEmissionScale } from './postProcessingShaders'
 
 interface CelestialBodiesProps {
@@ -94,11 +100,14 @@ export function CelestialBodies({
   celestialPresentationRef,
   visible,
 }: CelestialBodiesProps) {
+  const { gl } = useThree()
   const sunDiscRef = useRef<Mesh>(null)
   const sunHaloRef = useRef<Mesh>(null)
   const moonDiscRef = useRef<Mesh>(null)
   const moonHaloRef = useRef<Mesh>(null)
   const position = useMemo(() => new Vector3(), [])
+  const textureLoader = useMemo(() => new TextureLoader(), [])
+  const moonTextureFallback = useMemo(createMoonTextureFallback, [])
   const solarAppearanceRef = useRef<SolarDiscAppearance>({
     warmth: 0,
     hardDisc: 1,
@@ -129,13 +138,18 @@ export function CelestialBodies({
         '#ffc77a',
         getBloomEmissionScale(bloomEnabled, 'sun'),
       ),
-      moonDisc: new MeshBasicMaterial({
-        color: '#dbe8ff',
+      moonDisc: new ShaderMaterial({
+        vertexShader: celestialDiscVertexShader,
+        fragmentShader: moonDiscFragmentShader,
+        uniforms: {
+          uOpacity: { value: 0 },
+          uMoonSurface: { value: moonTextureFallback },
+          uUseSurface: { value: 0 },
+          uLunarAmbient: { value: 0.12 },
+        },
         transparent: true,
-        opacity: 0,
         depthTest: true,
         depthWrite: false,
-        blending: AdditiveBlending,
         toneMapped: false,
       }),
       moonHalo: createHaloMaterial(
@@ -143,7 +157,36 @@ export function CelestialBodies({
         getBloomEmissionScale(bloomEnabled, 'moon'),
       ),
     }),
-    [bloomEnabled],
+    [bloomEnabled, moonTextureFallback],
+  )
+
+  useEffect(() => {
+    const uniforms = materials.moonDisc.uniforms
+    const cancel = loadMoonTexture(
+      textureLoader,
+      ({ texture, detailed }) => {
+        const previous = uniforms.uMoonSurface.value
+        if (previous !== moonTextureFallback) previous.dispose()
+        uniforms.uMoonSurface.value = texture
+        uniforms.uUseSurface.value = detailed ? 1 : 0
+      },
+      gl.capabilities.getMaxAnisotropy(),
+    )
+
+    return () => {
+      cancel()
+      const current = uniforms.uMoonSurface.value
+      if (current !== moonTextureFallback) current.dispose()
+      uniforms.uMoonSurface.value = moonTextureFallback
+      uniforms.uUseSurface.value = 0
+    }
+  }, [gl, materials, moonTextureFallback, textureLoader])
+
+  useEffect(
+    () => () => {
+      moonTextureFallback.dispose()
+    },
+    [moonTextureFallback],
   )
 
   useEffect(
@@ -201,8 +244,9 @@ export function CelestialBodies({
     materials.sunDisc.uniforms.uHardDisc.value = solarAppearance.hardDisc
     materials.sunHalo.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunHalo * 0.62
-    materials.moonDisc.opacity =
+    materials.moonDisc.uniforms.uOpacity.value =
       presentation.moon.opacity * atmosphere.moonVisibility * 0.92
+    materials.moonDisc.uniforms.uLunarAmbient.value = atmosphere.lunarAmbient
     materials.moonHalo.uniforms.uOpacity.value =
       presentation.moon.opacity * atmosphere.moonHalo * 0.42
   })
