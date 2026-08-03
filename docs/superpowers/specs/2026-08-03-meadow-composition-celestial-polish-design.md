@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-03
 
-**Status:** Approved in conversation; awaiting written-spec review
+**Status:** Approved in conversation and written-spec review
 
 **Scope:** Incremental refinement of the existing living meadow
 
