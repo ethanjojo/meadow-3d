@@ -30,23 +30,23 @@ describe('EnvironmentSettings', () => {
       <EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={onChange} />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
-    expect(screen.getByRole('dialog', { name: /nastavení prostředí/i })).toBeVisible()
-    expect(screen.getByRole('slider', { name: /čas dne/i })).toBeDisabled()
+    expect(screen.getByRole('dialog', { name: /environment settings/i })).toBeVisible()
+    expect(screen.getByRole('slider', { name: /time of day/i })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole('radio', { name: /ručně/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /manual/i }))
     const manual = { ...DEFAULT_SIMULATION_SETTINGS, mode: 'manual' as const }
     expect(onChange).toHaveBeenLastCalledWith(manual)
 
     rerender(<EnvironmentSettings value={manual} onChange={onChange} />)
-    fireEvent.click(screen.getByRole('radio', { name: /bouřka/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /storm/i }))
     expect(onChange).toHaveBeenLastCalledWith({ ...manual, weather: 'storm' })
   })
 
   it('closes on Escape and restores focus to the trigger', () => {
     render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
-    const trigger = screen.getByRole('button', { name: /nastavení prostředí/i })
+    const trigger = screen.getByRole('button', { name: /environment settings/i })
 
     fireEvent.click(trigger)
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -58,15 +58,15 @@ describe('EnvironmentSettings', () => {
   it('moves focus into the dialog when it opens', () => {
     render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
-    expect(screen.getByRole('dialog', { name: /nastavení prostředí/i })).toHaveFocus()
+    expect(screen.getByRole('dialog', { name: /environment settings/i })).toHaveFocus()
   })
 
   it('closes when a visitor clicks outside the popover', () => {
     render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
     fireEvent.pointerDown(document.body)
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -81,15 +81,15 @@ describe('EnvironmentSettings', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
-    const time = screen.getByRole('slider', { name: /čas dne/i })
+    const time = screen.getByRole('slider', { name: /time of day/i })
     expect(time).toBeDisabled()
     expect(time).toHaveValue('0.5')
-    expect(time).toHaveAttribute('aria-valuetext', 'Poledne · 12:00')
-    expect(screen.getByText('Poledne · 12:00')).toBeVisible()
-    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
+    expect(time).toHaveAttribute('aria-valuetext', 'Noon · 12:00')
+    expect(screen.getByText('Noon · 12:00')).toBeVisible()
+    expect(screen.getByRole('radio', { name: /winter/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /storm/i })).toBeChecked()
   })
 
   it('seeds Manual targets from the currently visible Auto environment', () => {
@@ -102,8 +102,8 @@ describe('EnvironmentSettings', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
-    fireEvent.click(screen.getByRole('radio', { name: /ručně/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /manual/i }))
 
     expect(onChange).toHaveBeenLastCalledWith({
       mode: 'manual',

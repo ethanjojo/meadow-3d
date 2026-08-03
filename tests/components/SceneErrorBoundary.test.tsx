@@ -11,12 +11,12 @@ describe('SceneErrorBoundary', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     render(
-      <SceneErrorBoundary fallback={<p>Klidná náhradní louka</p>}>
+      <SceneErrorBoundary fallback={<p>Calm fallback meadow</p>}>
         <BrokenScene />
       </SceneErrorBoundary>,
     )
 
-    expect(screen.getByText('Klidná náhradní louka')).toBeInTheDocument()
+    expect(screen.getByText('Calm fallback meadow')).toBeInTheDocument()
     consoleError.mockRestore()
   })
 })

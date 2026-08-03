@@ -13,42 +13,42 @@ interface EnvironmentSettingsProps {
 }
 
 const SEASONS: readonly { value: SeasonIndex; label: string }[] = [
-  { value: 0, label: 'Jaro' },
-  { value: 1, label: 'Léto' },
-  { value: 2, label: 'Podzim' },
-  { value: 3, label: 'Zima' },
+  { value: 0, label: 'Spring' },
+  { value: 1, label: 'Summer' },
+  { value: 2, label: 'Autumn' },
+  { value: 3, label: 'Winter' },
 ]
 
 const WEATHER_OPTIONS: readonly { value: WeatherPreset; label: string }[] = [
-  { value: 'clear', label: 'Jasno' },
-  { value: 'cloudy', label: 'Oblačno' },
-  { value: 'fog', label: 'Mlha' },
-  { value: 'rain', label: 'Déšť' },
-  { value: 'storm', label: 'Bouřka' },
-  { value: 'snow', label: 'Sněžení' },
+  { value: 'clear', label: 'Clear' },
+  { value: 'cloudy', label: 'Cloudy' },
+  { value: 'fog', label: 'Fog' },
+  { value: 'rain', label: 'Rain' },
+  { value: 'storm', label: 'Storm' },
+  { value: 'snow', label: 'Snow' },
 ]
 
 function getVisibleSeason(snapshot: EnvironmentSnapshot): SeasonIndex {
   return (Math.round(snapshot.seasonPosition) % 4) as SeasonIndex
 }
 
-function getCzechTimeText(dayPhase: number) {
+function getEnglishTimeText(dayPhase: number) {
   const wrappedPhase = ((dayPhase % 1) + 1) % 1
   const totalMinutes = Math.round(wrappedPhase * 24 * 60) % (24 * 60)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   const dayPart =
     hours < 5 || hours >= 21
-      ? 'Noc'
+      ? 'Night'
       : hours < 7
-        ? 'Svítání'
+        ? 'Dawn'
         : hours < 11
-          ? 'Ráno'
+          ? 'Morning'
           : hours < 13
-            ? 'Poledne'
+            ? 'Noon'
             : hours < 18
-              ? 'Odpoledne'
-              : 'Soumrak'
+              ? 'Afternoon'
+              : 'Dusk'
 
   return `${dayPart} · ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
@@ -70,7 +70,7 @@ export function EnvironmentSettings({
       : getVisibleSeason(visibleSnapshot)
   const displayedWeather =
     manual || !visibleSnapshot ? value.weather : visibleSnapshot.weather.preset
-  const timeText = getCzechTimeText(displayedDayPhase)
+  const timeText = getEnglishTimeText(displayedDayPhase)
 
   const dismiss = useCallback(() => {
     setOpen(false)
@@ -128,7 +128,7 @@ export function EnvironmentSettings({
         ref={triggerRef}
         className="environment-settings-trigger"
         type="button"
-        aria-label="Nastavení prostředí"
+        aria-label="Environment settings"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
@@ -138,12 +138,12 @@ export function EnvironmentSettings({
         <section
           ref={panelRef}
           role="dialog"
-          aria-label="Nastavení prostředí"
+          aria-label="Environment settings"
           className="environment-panel"
           tabIndex={-1}
         >
           <fieldset>
-            <legend>Režim</legend>
+            <legend>Mode</legend>
             {(['auto', 'manual'] as const).map((mode) => (
               <label key={mode} className="environment-choice">
                 <input
@@ -152,18 +152,18 @@ export function EnvironmentSettings({
                   checked={value.mode === mode}
                   onChange={() => updateMode(mode)}
                 />
-                {mode === 'auto' ? 'Auto' : 'Ručně'}
+                {mode === 'auto' ? 'Automatic' : 'Manual'}
               </label>
             ))}
           </fieldset>
           <div className="environment-range">
             <span>
-              <label htmlFor="environment-day-phase">Čas dne</label>
+              <label htmlFor="environment-day-phase">Time of day</label>
               <output htmlFor="environment-day-phase">{timeText}</output>
             </span>
             <input
               id="environment-day-phase"
-              aria-label="Čas dne"
+              aria-label="Time of day"
               aria-valuetext={timeText}
               type="range"
               min="0"
@@ -219,7 +219,7 @@ function SeasonChoices({
 }) {
   return (
     <fieldset>
-      <legend>Roční období</legend>
+      <legend>Season</legend>
       <div className="environment-options">
         {SEASONS.map((season) => (
           <label key={season.value} className="environment-choice">
@@ -249,7 +249,7 @@ function WeatherChoices({
 }) {
   return (
     <fieldset>
-      <legend>Počasí</legend>
+      <legend>Weather</legend>
       <div className="environment-options">
         {WEATHER_OPTIONS.map((weather) => (
           <label key={weather.value} className="environment-choice">

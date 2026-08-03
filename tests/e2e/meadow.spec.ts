@@ -17,13 +17,14 @@ test('loads the meadow and toggles ambience without page errors', async ({
   page.on('pageerror', (error) => errors.push(error.message))
 
   await page.goto('/')
-  await expect(page.getByRole('main', { name: 'Živá louka' })).toBeVisible()
+  await expect(page).toHaveTitle('Living Meadow')
+  await expect(page.getByRole('main', { name: 'Living Meadow' })).toBeVisible()
 
-  const sound = page.getByRole('button', { name: 'Zapnout zvuk' })
+  const sound = page.getByRole('button', { name: 'Turn sound on' })
   await expect(sound).toBeVisible()
   await sound.click({ force: true })
   await expect(
-    page.getByRole('button', { name: 'Vypnout zvuk' }),
+    page.getByRole('button', { name: 'Turn sound off' }),
   ).toHaveAttribute('aria-pressed', 'true')
   expect(errors).toEqual([])
 })
@@ -34,8 +35,8 @@ test('keeps the passive experience usable with reduced motion', async ({
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
 
-  const main = page.getByRole('main', { name: 'Živá louka' })
-  const sound = page.getByRole('button', { name: 'Zapnout zvuk' })
+  const main = page.getByRole('main', { name: 'Living Meadow' })
+  const sound = page.getByRole('button', { name: 'Turn sound on' })
   await expect(main).toBeVisible()
   await sound.focus()
   await expect(sound).toBeFocused()
@@ -46,9 +47,9 @@ test('gives the opened environment popover the visible focus treatment', async (
   await page.goto('/')
 
   await page
-    .getByRole('button', { name: 'Nastavení prostředí' })
+    .getByRole('button', { name: 'Environment settings' })
     .click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Nastavení prostředí' })
+  const panel = page.getByRole('dialog', { name: 'Environment settings' })
 
   await expect(panel).toBeFocused()
   await expect(panel).toHaveCSS('outline-color', 'rgb(247, 215, 130)')
@@ -59,9 +60,9 @@ test('keeps the environment popover inside a short viewport', async ({ page }) =
   await page.goto('/')
 
   await page
-    .getByRole('button', { name: 'Nastavení prostředí' })
+    .getByRole('button', { name: 'Environment settings' })
     .click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Nastavení prostředí' })
+  const panel = page.getByRole('dialog', { name: 'Environment settings' })
 
   await expect(panel).toBeFocused()
 
@@ -79,9 +80,9 @@ test('keeps the environment popover inside a 500px-wide viewport', async ({
   await page.goto('/')
 
   await page
-    .getByRole('button', { name: 'Nastavení prostředí' })
+    .getByRole('button', { name: 'Environment settings' })
     .click({ force: true })
-  const panel = page.getByRole('dialog', { name: 'Nastavení prostředí' })
+  const panel = page.getByRole('dialog', { name: 'Environment settings' })
   await expect(panel).toBeFocused()
 
   const bounds = await panel.boundingBox()
@@ -96,27 +97,27 @@ test('manually controls the environment and returns to auto', async ({ page }) =
   await page.goto('/')
 
   await page
-    .getByRole('button', { name: /nastavení prostředí/i })
+    .getByRole('button', { name: /environment settings/i })
     .click({ force: true })
-  const manual = page.getByRole('radio', { name: /ručně/i })
+  const manual = page.getByRole('radio', { name: /manual/i })
   await expect(manual).toBeVisible()
   await expect(manual).toBeEnabled()
   await manual.check()
 
-  const winter = page.getByRole('radio', { name: /zima/i })
+  const winter = page.getByRole('radio', { name: /winter/i })
   await expect(winter).toBeVisible()
   await expect(winter).toBeEnabled()
   await winter.check()
 
-  const snow = page.getByRole('radio', { name: /sněžení/i })
+  const snow = page.getByRole('radio', { name: /snow/i })
   await expect(snow).toBeVisible()
   await expect(snow).toBeEnabled()
   await snow.check()
 
-  const main = page.getByRole('main', { name: 'Živá louka' })
+  const main = page.getByRole('main', { name: 'Living Meadow' })
   await expect(main).toHaveAttribute('data-weather', 'snow')
 
-  const auto = page.getByRole('radio', { name: /^auto$/i })
+  const auto = page.getByRole('radio', { name: /^automatic$/i })
   await expect(auto).toBeVisible()
   await expect(auto).toBeEnabled()
   await auto.check()
@@ -131,18 +132,18 @@ test('completes a manual environment crossfade without accelerating auto time', 
   page.on('pageerror', (error) => errors.push(error.message))
 
   await page.goto('/')
-  const main = page.getByRole('main', { name: 'Živá louka' })
+  const main = page.getByRole('main', { name: 'Living Meadow' })
   await expect(main).not.toHaveAttribute('data-auto-elapsed', '0')
 
   await page
-    .getByRole('button', { name: 'Nastavení prostředí' })
+    .getByRole('button', { name: 'Environment settings' })
     .click({ force: true })
-  await page.getByRole('radio', { name: 'Ručně' }).check({ force: true })
-  await page.getByRole('radio', { name: 'Zima' }).check({ force: true })
+  await page.getByRole('radio', { name: 'Manual' }).check({ force: true })
+  await page.getByRole('radio', { name: 'Winter' }).check({ force: true })
   const previousRevision = Number(
     await main.getAttribute('data-transition-revision'),
   )
-  await page.getByRole('radio', { name: 'Sněžení' }).check({ force: true })
+  await page.getByRole('radio', { name: 'Snow' }).check({ force: true })
   await expect(main).toHaveAttribute('data-weather', 'snow')
   await expect
     .poll(async () => Number(await main.getAttribute('data-transition-revision')))
@@ -167,12 +168,12 @@ test('preserves an open daylight sky above the fixed grass horizon', async ({
   await page.goto('/')
 
   await page
-    .getByRole('button', { name: 'Nastavení prostředí' })
+    .getByRole('button', { name: 'Environment settings' })
     .click({ force: true })
-  await page.getByRole('radio', { name: 'Ručně' }).check()
-  await page.getByLabel('Čas dne').fill('0.5')
-  await page.getByRole('radio', { name: 'Léto' }).check()
-  await page.getByRole('radio', { name: 'Jasno' }).check()
+  await page.getByRole('radio', { name: 'Manual' }).check()
+  await page.getByLabel('Time of day').fill('0.5')
+  await page.getByRole('radio', { name: 'Summer' }).check()
+  await page.getByRole('radio', { name: 'Clear' }).check()
   await page.keyboard.press('Escape')
   await page.waitForTimeout(3_500)
 

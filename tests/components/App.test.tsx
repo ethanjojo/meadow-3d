@@ -27,7 +27,7 @@ vi.mock('../../src/scene/NatureScene', () => ({
       <output data-testid="simulation-mode">{simulationSettings.mode}</output>
       <button
         type="button"
-        aria-label="Publikovat živý stav scény"
+        aria-label="Publish visible scene state"
         onClick={() => {
           const snapshot: EnvironmentSnapshot = {
             elapsed: 90,
@@ -83,9 +83,9 @@ describe('App', () => {
   it('renders a full-screen nature experience with an accessible title', () => {
     render(<App />)
 
-    expect(screen.getByRole('main', { name: /živá louka/i })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: /living meadow/i })).toBeInTheDocument()
     expect(screen.getByTestId('nature-canvas')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /zapnout zvuk/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /turn sound on/i })).toBeInTheDocument()
   })
 
   it('shows a deliberate static scene when WebGL is unavailable', () => {
@@ -93,7 +93,7 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.queryByTestId('nature-canvas')).not.toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /klidná louka/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /calm meadow/i })).toBeInTheDocument()
   })
 
   it('persists an environment choice only after a visitor changes it', () => {
@@ -101,8 +101,8 @@ describe('App', () => {
 
     expect(localStorage.getItem('living-meadow:environment')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
-    fireEvent.click(screen.getByRole('radio', { name: /ručně/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /manual/i }))
 
     expect(JSON.parse(localStorage.getItem('living-meadow:environment') ?? '')).toEqual({
       mode: 'manual',
@@ -124,20 +124,20 @@ describe('App', () => {
     )
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
-    expect(screen.getByRole('radio', { name: /ručně/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /sněžení/i })).toBeChecked()
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /manual/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /winter/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /snow/i })).toBeChecked()
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-simulation-mode',
       'manual',
     )
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-weather',
       'snow',
     )
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-season',
       '3',
     )
@@ -148,8 +148,8 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(screen.getByRole('button', { name: /nastavení prostředí/i })).toBeInTheDocument()
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /environment settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-simulation-mode',
       'auto',
     )
@@ -175,29 +175,29 @@ describe('App', () => {
     render(<App />)
 
     fireEvent.click(
-      screen.getByRole('button', { name: /publikovat živý stav scény/i }),
+      screen.getByRole('button', { name: /publish visible scene state/i }),
     )
-    fireEvent.click(screen.getByRole('button', { name: /nastavení prostředí/i }))
+    fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
-    expect(screen.getByRole('slider', { name: /čas dne/i })).toHaveAttribute(
+    expect(screen.getByRole('slider', { name: /time of day/i })).toHaveAttribute(
       'aria-valuetext',
-      'Poledne · 12:00',
+      'Noon · 12:00',
     )
-    expect(screen.getByRole('radio', { name: /zima/i })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /bouřka/i })).toBeChecked()
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /winter/i })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /storm/i })).toBeChecked()
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-transition-active',
       'true',
     )
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-transition-progress',
       '0.4',
     )
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-auto-elapsed',
       '90',
     )
-    expect(screen.getByRole('main', { name: /živá louka/i })).toHaveAttribute(
+    expect(screen.getByRole('main', { name: /living meadow/i })).toHaveAttribute(
       'data-transition-revision',
       '2',
     )

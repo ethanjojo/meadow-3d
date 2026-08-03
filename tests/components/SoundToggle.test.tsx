@@ -7,7 +7,7 @@ describe('SoundToggle', () => {
     render(<SoundToggle enabled={false} onChange={() => undefined} />)
 
     expect(
-      screen.getByRole('button', { name: /zapnout zvuk/i }),
+      screen.getByRole('button', { name: /turn sound on/i }),
     ).toHaveAttribute('aria-pressed', 'false')
   })
 
@@ -23,7 +23,7 @@ describe('SoundToggle', () => {
   it('offers to mute an enabled ambience', () => {
     render(<SoundToggle enabled onChange={() => undefined} />)
     expect(
-      screen.getByRole('button', { name: /vypnout zvuk/i }),
+      screen.getByRole('button', { name: /turn sound off/i }),
     ).toHaveAttribute('aria-pressed', 'true')
   })
 })

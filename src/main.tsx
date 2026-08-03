@@ -5,7 +5,7 @@ import { App } from './App'
 const root = document.getElementById('root')
 
 if (!root) {
-  throw new Error('Chybí kořenový element aplikace.')
+  throw new Error('The application root element is missing.')
 }
 
 createRoot(root).render(

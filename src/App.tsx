@@ -134,7 +134,7 @@ export function App() {
   return (
     <main
       className="experience"
-      aria-label="Živá louka"
+      aria-label="Living Meadow"
       data-simulation-mode={simulationSettings.mode}
       data-weather={simulationSettings.weather}
       data-season={simulationSettings.seasonIndex}

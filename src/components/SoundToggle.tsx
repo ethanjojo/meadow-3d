@@ -29,7 +29,7 @@ function SoundIcon({ enabled }: { enabled: boolean }) {
 }
 
 export function SoundToggle({ enabled, onChange }: SoundToggleProps) {
-  const label = enabled ? 'Vypnout zvuk' : 'Zapnout zvuk'
+  const label = enabled ? 'Turn sound off' : 'Turn sound on'
 
   return (
     <button
@@ -40,7 +40,7 @@ export function SoundToggle({ enabled, onChange }: SoundToggleProps) {
       onClick={() => onChange(!enabled)}
     >
       <SoundIcon enabled={enabled} />
-      <span>{enabled ? 'Zvuk zapnutý' : 'Zvuk vypnutý'}</span>
+      <span>{enabled ? 'Sound on' : 'Sound off'}</span>
     </button>
   )
 }
