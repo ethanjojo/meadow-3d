@@ -4,6 +4,7 @@ import type { NatureSnapshot } from '../../src/core/natureClock'
 import type { SeasonAppearance } from '../../src/core/season'
 import {
   blendWeather,
+  deriveRainStreakOrientation,
   deriveWeatherEffects,
   getAutomaticWeather,
   getWeatherOpacity,
@@ -132,6 +133,30 @@ describe('getWeatherOpacity', () => {
     })
     expect(dawn.dew).toBeGreaterThan(0)
     expect(rainyDawn.dew).toBe(0)
+  })
+
+  it('does not form dew at cloudy or foggy dawns', () => {
+    const deriveDawn = (preset: 'cloudy' | 'fog') =>
+      deriveWeatherEffects({
+        elapsed: 120,
+        dayPhase: 0.24,
+        seasonPosition: 1,
+        weather: getWeatherProfile(preset),
+        reducedMotion: false,
+      })
+
+    expect(deriveDawn('cloudy').dew).toBe(0)
+    expect(deriveDawn('fog').dew).toBe(0)
+  })
+
+  it('leans rain streak orientation along the shared wind vector', () => {
+    const calm = deriveRainStreakOrientation([1, 0], 0)
+    const eastWind = deriveRainStreakOrientation([1, 0], 0.8)
+    const westWind = deriveRainStreakOrientation([-1, 0], 0.8)
+
+    expect(calm).toEqual({ x: 0, y: -1, z: 0 })
+    expect(eastWind.x).toBeGreaterThan(0)
+    expect(westWind.x).toBeLessThan(0)
   })
 
   it('suppresses fast storm flashes for reduced motion', () => {

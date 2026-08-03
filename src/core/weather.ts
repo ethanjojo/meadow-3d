@@ -14,6 +14,12 @@ export interface WeatherEffects extends WeatherOpacity {
   stormFlash: number
 }
 
+export interface RainStreakOrientation {
+  x: number
+  y: number
+  z: number
+}
+
 interface WeatherEffectInput {
   elapsed: number
   dayPhase: number
@@ -127,6 +133,20 @@ function circularDistance(from: number, to: number, period: number) {
   return distance
 }
 
+export function deriveRainStreakOrientation(
+  windDirection: readonly [number, number],
+  windStrength: number,
+  target?: RainStreakOrientation,
+): RainStreakOrientation {
+  const length = Math.hypot(windDirection[0], windDirection[1]) || 1
+  const lean = clamp01(windStrength) * 0.85
+  const orientation = target ?? { x: 0, y: -1, z: 0 }
+  orientation.x = windDirection[0] / length * lean
+  orientation.y = -1
+  orientation.z = windDirection[1] / length * lean
+  return orientation
+}
+
 export function deriveWeatherEffects({
   elapsed,
   dayPhase,
@@ -146,6 +166,8 @@ export function deriveWeatherEffects({
     (1 - smoothstep(0.62, 0.78, weather.cloudCover)) *
     (1 - precipitation) *
     (1 - clamp01(weather.storm))
+  const dewSky = 1 - smoothstep(0.25, 0.5, weather.cloudCover)
+  const dewAir = 1 - smoothstep(0.2, 0.5, weather.fog)
   const dawn = 1 - smoothstep(0.035, 0.13, circularDistance(dayPhase, 0.25, 1))
   const safeElapsed = Number.isFinite(elapsed) ? elapsed : 0
   const flashPhase = ((safeElapsed % 13.7) + 13.7) % 13.7
@@ -172,7 +194,9 @@ export function deriveWeatherEffects({
     weather.fireflies * summer * night * calm * fairWeather *
       (reducedMotion ? 0.35 : 1),
   )
-  effects.dew = clamp01(weather.dew * dawn * (1 - precipitation))
+  effects.dew = clamp01(
+    weather.dew * dawn * dewSky * dewAir * (1 - precipitation),
+  )
   effects.stormFlash = reducedMotion
     ? 0
     : clamp01(weather.storm * Math.max(firstFlash, secondFlash * 0.72))

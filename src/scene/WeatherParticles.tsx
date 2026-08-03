@@ -7,11 +7,15 @@ import {
   Color,
   ShaderMaterial,
   Vector2,
+  Vector3,
 } from 'three'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
-import type { WeatherEffects } from '../core/weather'
+import {
+  deriveRainStreakOrientation,
+  type WeatherEffects,
+} from '../core/weather'
 
 interface WeatherParticlesProps {
   quality: QualityProfile
@@ -29,8 +33,10 @@ const particleVertexShader = /* glsl */ `
   uniform float uWindStrength;
   uniform float uFallSpeed;
   uniform vec2 uWindDirection;
+  uniform vec3 uRainStreakOrientation;
   varying float vFade;
   varying float vPulse;
+  varying float vRainAngle;
 
   void main() {
     vec3 animated = position;
@@ -54,10 +60,14 @@ const particleVertexShader = /* glsl */ `
     }
 
     vec4 viewPosition = modelViewMatrix * vec4(animated, 1.0);
+    vec4 projectedStreakOrientation = projectionMatrix * viewMatrix * vec4(uRainStreakOrientation, 0.0);
     gl_Position = projectionMatrix * viewPosition;
     gl_PointSize = uPointSize * clamp(18.0 / -viewPosition.z, 0.45, 2.2);
     vFade = smoothstep(-2.0, 1.0, animated.y) * smoothstep(13.0, 9.0, animated.y);
     vPulse = uKind > 2.5 ? 0.52 + 0.48 * sin(uTime * 2.1 + position.x * 3.7 + position.z) : 1.0;
+    vRainAngle = uKind > 0.5 && uKind < 1.5
+      ? atan(projectedStreakOrientation.x, -projectedStreakOrientation.y)
+      : 0.0;
   }
 `
 
@@ -67,12 +77,16 @@ const particleFragmentShader = /* glsl */ `
   uniform float uKind;
   varying float vFade;
   varying float vPulse;
+  varying float vRainAngle;
 
   void main() {
     vec2 centered = gl_PointCoord - 0.5;
     float shape;
     if (uKind > 0.5 && uKind < 1.5) {
-      shape = smoothstep(0.22, 0.04, abs(centered.x)) * smoothstep(0.5, 0.02, abs(centered.y));
+      float cosine = cos(vRainAngle);
+      float sine = sin(vRainAngle);
+      vec2 oriented = mat2(cosine, sine, -sine, cosine) * centered;
+      shape = smoothstep(0.22, 0.04, abs(oriented.x)) * smoothstep(0.5, 0.02, abs(oriented.y));
     } else {
       shape = smoothstep(0.5, 0.08, length(centered));
     }
@@ -122,6 +136,7 @@ function createParticleMaterial(
       uWindStrength: { value: 0.5 },
       uFallSpeed: { value: fallSpeed },
       uWindDirection: { value: new Vector2(0.86, 0.5).normalize() },
+      uRainStreakOrientation: { value: new Vector3(0, -1, 0) },
       uColor: { value: new Color(color) },
       uOpacity: { value: 0 },
     },
@@ -178,6 +193,11 @@ export function WeatherParticles({
         .set(...snapshot.weather.windDirection)
         .normalize()
     }
+    deriveRainStreakOrientation(
+      snapshot.weather.windDirection,
+      snapshot.weather.windStrength,
+      materials[1].uniforms.uRainStreakOrientation.value,
+    )
     materials[0].uniforms.uOpacity.value = effects.pollen * seasonRef.current.pollen
     materials[1].uniforms.uOpacity.value = effects.rain
     materials[2].uniforms.uOpacity.value = effects.snow
