@@ -13,6 +13,17 @@ export interface GrassLayerLayout extends GrassLayout {
   leans: Float32Array
   colorVariation: Float32Array
   atlasCells: Float32Array
+  clusterHue: Float32Array
+  clusterShape: Float32Array
+}
+
+export interface GrassCluster {
+  hue: number
+  height: number
+  width: number
+  stiffness: number
+  dryness: number
+  shape: number
 }
 
 export const GRASS_LAYER_RATIOS = {
@@ -55,6 +66,8 @@ const LAYER_BANDS = {
   { near: number; far: number; nearHalfWidth: number; farHalfWidth: number }
 >
 
+const FLOAT32_RANGE_EPSILON = 0.000001
+
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value))
 }
@@ -76,6 +89,49 @@ export function getGrassBendLimit(
   const stormLimit = (32 * Math.PI) / 180
   const limit = calmLimit + (stormLimit - calmLimit) * clamp01(windStrength)
   return limit * (reducedMotion ? 0.55 : 1)
+}
+
+function spatialWave(x: number, z: number, seed: number) {
+  return (
+    Math.sin(x * 0.19 + seed * 0.011) * 0.5 +
+    Math.sin(z * 0.16 - seed * 0.007) * 0.3 +
+    Math.sin((x + z) * 0.08 + seed * 0.003) * 0.2
+  )
+}
+
+export function sampleGrassCluster(
+  x: number,
+  z: number,
+  seed: number,
+  target: GrassCluster = {
+    hue: 0,
+    height: 1,
+    width: 1,
+    stiffness: 0,
+    dryness: 0,
+    shape: 0,
+  },
+) {
+  const field = spatialWave(x, z, seed)
+  const normalized = Math.min(1, Math.max(0, field * 0.5 + 0.5))
+  target.hue = (normalized - 0.5) * 0.12
+  target.height = 0.92 + normalized * 0.16
+  target.width = 0.9 + normalized * 0.2
+  target.stiffness = (normalized - 0.5) * 0.1
+  target.dryness = normalized * 0.12
+  target.shape = Math.min(3, Math.floor(normalized * 4))
+  return target
+}
+
+export function estimateGrassTipTravel(
+  scale: number,
+  stiffness: number,
+  windStrength: number,
+  clearanceWind: number,
+) {
+  const bend = getGrassBendLimit(windStrength, false)
+  const flexibility = 1 - stiffness * 0.62
+  return scale * Math.sin(bend * flexibility * clearanceWind)
 }
 
 export function getGrassClearance(distance: number) {
@@ -134,6 +190,10 @@ export function createGrassLayerLayout(
   const [minimumScale, maximumScale] = profile.scale
   const [minimumLean, maximumLean] = profile.lean
   const [minimumStiffness, maximumStiffness] = profile.stiffness
+  const storedMinimumScale = minimumScale + FLOAT32_RANGE_EPSILON
+  const storedMaximumScale = maximumScale - FLOAT32_RANGE_EPSILON
+  const storedMinimumStiffness = minimumStiffness + FLOAT32_RANGE_EPSILON
+  const storedMaximumStiffness = maximumStiffness - FLOAT32_RANGE_EPSILON
   const random = createMulberry32(seed)
   const offsets = new Float32Array(bladeCount * 3)
   const scales = new Float32Array(bladeCount)
@@ -144,6 +204,16 @@ export function createGrassLayerLayout(
   const leans = new Float32Array(bladeCount)
   const colorVariation = new Float32Array(bladeCount)
   const atlasCells = new Float32Array(bladeCount)
+  const clusterHue = new Float32Array(bladeCount)
+  const clusterShape = new Float32Array(bladeCount)
+  const cluster: GrassCluster = {
+    hue: 0,
+    height: 1,
+    width: 1,
+    stiffness: 0,
+    dryness: 0,
+    shape: 0,
+  }
 
   for (let index = 0; index < bladeCount; index += 1) {
     const depthSample = random()
@@ -159,23 +229,38 @@ export function createGrassLayerLayout(
     offsets[offsetIndex] = x
     offsets[offsetIndex + 1] = terrainHeight(x, z)
     offsets[offsetIndex + 2] = z
-    const scale = minimumScale + random() * (maximumScale - minimumScale)
+    sampleGrassCluster(x, z, seed, cluster)
+    const authoredScale =
+      minimumScale + random() * (maximumScale - minimumScale)
+    const scale = Math.min(
+      storedMaximumScale,
+      Math.max(storedMinimumScale, authoredScale * cluster.height),
+    )
     const normalizedScale =
       (scale - minimumScale) / (maximumScale - minimumScale)
     const stiffnessRange = maximumStiffness - minimumStiffness
     scales[index] = scale
     phases[index] = random() * Math.PI * 2
-    stiffness[index] = Math.min(
-      maximumStiffness,
-      minimumStiffness +
-        random() * stiffnessRange * 0.65 +
-        normalizedScale * stiffnessRange * 0.35,
+    stiffness[index] = Math.max(
+      storedMinimumStiffness,
+      Math.min(
+        storedMaximumStiffness,
+        minimumStiffness +
+          random() * stiffnessRange * 0.65 +
+          normalizedScale * stiffnessRange * 0.35 +
+          cluster.stiffness,
+      ),
     )
     yaw[index] = random() * Math.PI * 2
-    widths[index] = 0.7 + random() * 0.72
+    widths[index] = (0.7 + random() * 0.72) * cluster.width
     leans[index] = minimumLean + random() * (maximumLean - minimumLean)
-    colorVariation[index] = random()
+    colorVariation[index] = Math.min(
+      1,
+      Math.max(0, random() + cluster.dryness - 0.06),
+    )
     atlasCells[index] = Math.floor(random() * 8)
+    clusterHue[index] = cluster.hue
+    clusterShape[index] = cluster.shape
   }
 
   return {
@@ -188,6 +273,8 @@ export function createGrassLayerLayout(
     leans,
     colorVariation,
     atlasCells,
+    clusterHue,
+    clusterShape,
   }
 }
 

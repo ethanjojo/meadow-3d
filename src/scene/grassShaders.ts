@@ -12,6 +12,8 @@ export const grassVertexShader = /* glsl */ `
   attribute float instanceLean;
   attribute float instanceColorVariation;
   attribute float instanceAtlasCell;
+  attribute float instanceClusterHue;
+  attribute float instanceClusterShape;
 
   uniform float uTime;
   uniform float uWindStrength;
@@ -26,6 +28,8 @@ export const grassVertexShader = /* glsl */ `
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
+  varying float vClusterHue;
+  varying float vClusterShape;
 
   mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -44,6 +48,7 @@ export const grassVertexShader = /* glsl */ `
     vec3 localPosition = position;
     localPosition.y *= instanceScale * clearanceHeight;
     localPosition.xz *= instanceWidth;
+    localPosition.x *= mix(0.92, 1.08, instanceClusterShape / 3.0);
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 
     vec2 windDirection = normalize(uWindDirection + vec2(0.0001));
@@ -85,6 +90,8 @@ export const grassVertexShader = /* glsl */ `
 
     vHeight = heightRatio;
     vVariation = instanceColorVariation;
+    vClusterHue = instanceClusterHue;
+    vClusterShape = instanceClusterShape;
     vViewDepth = -viewPosition.z;
     float atlasColumn = mod(instanceAtlasCell, 4.0);
     float atlasRow = floor(instanceAtlasCell / 4.0);
@@ -132,6 +139,8 @@ export const grassFragmentShader = /* glsl */ `
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
+  varying float vClusterHue;
+  varying float vClusterShape;
 
   void main() {
     vec4 atlasColor = vec4(1.0);
@@ -145,6 +154,12 @@ export const grassFragmentShader = /* glsl */ `
     #endif
     vec3 freshColor = mix(uGrassBase, uGrassTip, smoothstep(0.05, 1.0, vHeight));
     vec3 grassColor = mix(freshColor, uDryColor, uDryness * (0.35 + vHeight * 0.65));
+    grassColor *= vec3(
+      1.0 + vClusterHue * 0.22,
+      1.0 + vClusterHue * 0.5,
+      1.0 - vClusterHue * 0.18
+    );
+    grassColor *= mix(0.98, 1.02, vClusterShape / 3.0);
     #ifndef SIMPLE_GRASS_LIGHTING
     float atlasLuminance = max(
       dot(atlasColor.rgb, vec3(0.2126, 0.7152, 0.0722)),

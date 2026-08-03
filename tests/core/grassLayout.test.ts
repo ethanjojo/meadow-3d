@@ -4,11 +4,13 @@ import {
   GRASS_LAYER_PROFILES,
   createGrassLayerLayout,
   createGrassLayout,
+  estimateGrassTipTravel,
   getGrassBendLimit,
   getGrassClearance,
   getGrassLayerBudgets,
   getGrassRootInfluence,
   grassLayerUsesAtlas,
+  sampleGrassCluster,
   terrainHeight,
   type GrassLayerKind,
 } from '../../src/core/grassLayout'
@@ -166,6 +168,30 @@ describe('layered grass layout', () => {
     ).toBe(1)
   })
 
+  it('keeps representative foreground tip travel at least 90% of middle travel', () => {
+    const foreground = estimateGrassTipTravel(1.2, 0.68, 0.7, 1)
+    const middle = estimateGrassTipTravel(0.99, 0.6, 0.7, 1)
+    expect(foreground / middle).toBeGreaterThanOrEqual(0.9)
+  })
+
+  it('creates deterministic locally correlated grass clusters', () => {
+    const origin = sampleGrassCluster(2, -3, 731)
+    const neighbor = sampleGrassCluster(2.2, -3.15, 731)
+    const distant = sampleGrassCluster(18, -24, 731)
+    expect(sampleGrassCluster(2, -3, 731)).toEqual(origin)
+    expect(Math.abs(origin.hue - neighbor.hue)).toBeLessThan(0.08)
+    expect(Math.abs(origin.hue - distant.hue)).toBeGreaterThan(0.005)
+    expect(origin.shape).toBeGreaterThanOrEqual(0)
+    expect(origin.shape).toBeLessThan(4)
+    expect(grassVertexShader).toContain(
+      'attribute float instanceClusterHue',
+    )
+    expect(grassVertexShader).toContain(
+      'attribute float instanceClusterShape',
+    )
+    expect(grassFragmentShader).toContain('vClusterHue')
+  })
+
   it('uses root-locked bounded curvature without scale-multiplied bend', () => {
     expect(grassVertexShader).toContain('uniform float uBendLimit')
     expect(grassVertexShader).toContain(
@@ -217,6 +243,8 @@ describe('layered grass layout', () => {
     )
     expect(first.leans).toHaveLength(64)
     expect(first.colorVariation).toHaveLength(64)
+    expect(first.clusterHue).toHaveLength(64)
+    expect(first.clusterShape).toHaveLength(64)
     expect(Math.max(...first.scales)).toBeGreaterThan(1.2)
   })
 
