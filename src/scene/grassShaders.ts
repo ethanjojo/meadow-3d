@@ -12,8 +12,6 @@ export const grassVertexShader = /* glsl */ `
   attribute float instanceLean;
   attribute float instanceColorVariation;
   attribute float instanceAtlasCell;
-  attribute float instanceClusterHue;
-  attribute float instanceClusterShape;
 
   uniform float uTime;
   uniform float uWindStrength;
@@ -28,8 +26,6 @@ export const grassVertexShader = /* glsl */ `
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
-  varying float vClusterHue;
-  varying float vClusterShape;
 
   mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -41,14 +37,13 @@ export const grassVertexShader = /* glsl */ `
     float heightRatio = clamp(position.y, 0.0, 1.0);
     float rootInfluence = pow(smoothstep(0.38, 1.0, heightRatio), 2.0);
     float cameraDistance = distance(cameraPosition.xz, instanceOffset.xz);
-    float cameraClearance = smoothstep(0.65, 5.5, cameraDistance);
-    float clearanceHeight = mix(0.70, 1.0, cameraClearance);
-    float clearanceLean = mix(0.60, 1.0, cameraClearance);
-    float clearanceWind = mix(0.70, 1.0, cameraClearance);
+    float cameraClearance = smoothstep(1.6, 8.0, cameraDistance);
+    float clearanceHeight = mix(0.15, 1.0, cameraClearance);
+    float clearanceLean = cameraClearance;
+    float clearanceWind = cameraClearance;
     vec3 localPosition = position;
     localPosition.y *= instanceScale * clearanceHeight;
     localPosition.xz *= instanceWidth;
-    localPosition.x *= mix(0.92, 1.08, instanceClusterShape / 3.0);
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 
     vec2 windDirection = normalize(uWindDirection + vec2(0.0001));
@@ -90,8 +85,6 @@ export const grassVertexShader = /* glsl */ `
 
     vHeight = heightRatio;
     vVariation = instanceColorVariation;
-    vClusterHue = instanceClusterHue;
-    vClusterShape = instanceClusterShape;
     vViewDepth = -viewPosition.z;
     float atlasColumn = mod(instanceAtlasCell, 4.0);
     float atlasRow = floor(instanceAtlasCell / 4.0);
@@ -128,7 +121,6 @@ export const grassFragmentShader = /* glsl */ `
   uniform float uSkyLightIntensity;
   uniform float uSunIntensity;
   uniform float uMoonIntensity;
-  uniform float uLunarAmbient;
   uniform float uStormFlash;
   uniform sampler2D uGrassColorAtlas;
   uniform sampler2D uGrassSurfaceAtlas;
@@ -140,8 +132,6 @@ export const grassFragmentShader = /* glsl */ `
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
-  varying float vClusterHue;
-  varying float vClusterShape;
 
   void main() {
     vec4 atlasColor = vec4(1.0);
@@ -155,12 +145,6 @@ export const grassFragmentShader = /* glsl */ `
     #endif
     vec3 freshColor = mix(uGrassBase, uGrassTip, smoothstep(0.05, 1.0, vHeight));
     vec3 grassColor = mix(freshColor, uDryColor, uDryness * (0.35 + vHeight * 0.65));
-    grassColor *= vec3(
-      1.0 + vClusterHue * 0.22,
-      1.0 + vClusterHue * 0.5,
-      1.0 - vClusterHue * 0.18
-    );
-    grassColor *= mix(0.98, 1.02, vClusterShape / 3.0);
     #ifndef SIMPLE_GRASS_LIGHTING
     float atlasLuminance = max(
       dot(atlasColor.rgb, vec3(0.2126, 0.7152, 0.0722)),
@@ -187,7 +171,6 @@ export const grassFragmentShader = /* glsl */ `
     float skyFacing = normal.y * 0.5 + 0.5;
     vec3 hemisphereFill =
       mix(uGroundLightColor, uSkyColor, skyFacing) * uSkyLightIntensity;
-    hemisphereFill += uMoonColor * uLunarAmbient * (0.1 + skyFacing * 0.08);
     vec3 light =
       hemisphereFill +
       uSunColor * sunFacing * uSunIntensity * 0.72 +
@@ -200,9 +183,6 @@ export const grassFragmentShader = /* glsl */ `
       pow(sunFacing, mix(14.0, 24.0, roughness)) *
       (0.18 + lowerBlade * 0.32);
     litColor += uSunColor * wetHighlight * uSunIntensity;
-    float moonWetHighlight =
-      uWetness * pow(moonFacing, 18.0) * uMoonIntensity * 0.12;
-    litColor += uMoonColor * moonWetHighlight;
     float backlight = max(dot(-normal, uSunDirection), 0.0);
     float transmission =
       uUseTransmission *

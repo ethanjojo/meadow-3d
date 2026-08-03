@@ -25,13 +25,3 @@ export function projectCelestialPoint(
     .addScaledVector(RIGHT, point.x * halfWidth)
     .addScaledVector(UP, point.y * halfHeight)
 }
-
-export function getCelestialViewDirection(
-  camera: PerspectiveCamera,
-  point: CelestialArcPoint,
-  output: Vector3,
-) {
-  return projectCelestialPoint(camera, point, 1, output)
-    .sub(camera.position)
-    .normalize()
-}

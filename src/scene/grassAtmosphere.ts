@@ -14,7 +14,6 @@ export function syncGrassAtmosphereUniforms(
   uniforms.uSkyLightIntensity.value = atmosphere.skyLightIntensity
   uniforms.uSunIntensity.value = atmosphere.sunIntensity
   uniforms.uMoonIntensity.value = atmosphere.moonIntensity
-  uniforms.uLunarAmbient.value = atmosphere.lunarAmbient
   uniforms.uFogColor.value.copy(atmosphere.fogColor)
   uniforms.uFogDensity.value = atmosphere.fogDensity
 }

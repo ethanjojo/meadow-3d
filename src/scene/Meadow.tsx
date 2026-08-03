@@ -155,14 +155,6 @@ function createBladeGeometry(
     'instanceAtlasCell',
     new InstancedBufferAttribute(layout.atlasCells, 1),
   )
-  geometry.setAttribute(
-    'instanceClusterHue',
-    new InstancedBufferAttribute(layout.clusterHue, 1),
-  )
-  geometry.setAttribute(
-    'instanceClusterShape',
-    new InstancedBufferAttribute(layout.clusterShape, 1),
-  )
   geometry.instanceCount = count
   geometry.boundingSphere = new Sphere(new Vector3(0, 0, -14), 44)
   return geometry
@@ -224,7 +216,6 @@ function createGrassMaterial(
       uSkyLightIntensity: { value: 0.7 },
       uSunIntensity: { value: 1.4 },
       uMoonIntensity: { value: 0.18 },
-      uLunarAmbient: { value: 0.12 },
       uStormFlash: { value: 0 },
       uGrassColorAtlas: { value: colorAtlas },
       uGrassSurfaceAtlas: { value: surfaceAtlas },

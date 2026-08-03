@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  GRASS_LAYER_RATIOS,
   GRASS_LAYER_PROFILES,
   createGrassLayerLayout,
   createGrassLayout,
-  estimateGrassTipTravel,
   getGrassBendLimit,
   getGrassClearance,
   getGrassLayerBudgets,
   getGrassRootInfluence,
   grassLayerUsesAtlas,
-  sampleGrassCluster,
   terrainHeight,
   type GrassLayerKind,
 } from '../../src/core/grassLayout'
@@ -74,17 +71,17 @@ describe('layered grass layout', () => {
   it('uses the exact physical ranges for every depth layer', () => {
     expect(GRASS_LAYER_PROFILES).toEqual({
       foreground: {
-        scale: [0.25, 1.55],
+        scale: [0.85, 1.55],
         lean: [-0.12, 0.12],
         stiffness: [0.45, 0.92],
       },
       middle: {
-        scale: [0.22, 0.55],
+        scale: [0.68, 1.3],
         lean: [-0.16, 0.16],
         stiffness: [0.32, 0.88],
       },
       horizon: {
-        scale: [0.16, 0.32],
+        scale: [0.48, 0.9],
         lean: [-0.14, 0.14],
         stiffness: [0.38, 0.92],
       },
@@ -147,49 +144,13 @@ describe('layered grass layout', () => {
     )
   })
 
-  it('preserves near-camera height, lean, and wind while avoiding the near plane', () => {
-    const close = getGrassClearance(0)
-    expect(close.height).toBeGreaterThanOrEqual(0.7)
-    expect(close.wind).toBeGreaterThanOrEqual(0.7)
-    expect(close.lean).toBeGreaterThanOrEqual(0.6)
+  it('suppresses blade height, lean, and wind near the camera', () => {
+    const close = getGrassClearance(1)
+    const clear = getGrassClearance(9)
 
-    const foreground = createGrassLayerLayout(8_192, 'foreground', 17)
-    for (let index = 2; index < foreground.offsets.length; index += 3) {
-      expect(foreground.offsets[index]).toBeLessThanOrEqual(4.4)
-    }
-  })
-
-  it('reserves enough blades for overlapping foreground coverage', () => {
-    expect(GRASS_LAYER_RATIOS.foreground).toBeGreaterThanOrEqual(0.28)
-    expect(
-      GRASS_LAYER_RATIOS.foreground +
-        GRASS_LAYER_RATIOS.middle +
-        GRASS_LAYER_RATIOS.horizon,
-    ).toBe(1)
-  })
-
-  it('keeps representative foreground tip travel at least 90% of middle travel', () => {
-    const foreground = estimateGrassTipTravel(1.2, 0.68, 0.7, 1)
-    const middle = estimateGrassTipTravel(0.99, 0.6, 0.7, 1)
-    expect(foreground / middle).toBeGreaterThanOrEqual(0.9)
-  })
-
-  it('creates deterministic locally correlated grass clusters', () => {
-    const origin = sampleGrassCluster(2, -3, 731)
-    const neighbor = sampleGrassCluster(2.2, -3.15, 731)
-    const distant = sampleGrassCluster(18, -24, 731)
-    expect(sampleGrassCluster(2, -3, 731)).toEqual(origin)
-    expect(Math.abs(origin.hue - neighbor.hue)).toBeLessThan(0.08)
-    expect(Math.abs(origin.hue - distant.hue)).toBeGreaterThan(0.005)
-    expect(origin.shape).toBeGreaterThanOrEqual(0)
-    expect(origin.shape).toBeLessThan(4)
-    expect(grassVertexShader).toContain(
-      'attribute float instanceClusterHue',
+    expect(close.height * close.lean * close.wind).toBeLessThan(
+      clear.height * clear.lean * clear.wind,
     )
-    expect(grassVertexShader).toContain(
-      'attribute float instanceClusterShape',
-    )
-    expect(grassFragmentShader).toContain('vClusterHue')
   })
 
   it('uses root-locked bounded curvature without scale-multiplied bend', () => {
@@ -243,8 +204,6 @@ describe('layered grass layout', () => {
     )
     expect(first.leans).toHaveLength(64)
     expect(first.colorVariation).toHaveLength(64)
-    expect(first.clusterHue).toHaveLength(64)
-    expect(first.clusterShape).toHaveLength(64)
     expect(Math.max(...first.scales)).toBeGreaterThan(1.2)
   })
 
@@ -267,7 +226,7 @@ describe('layered grass layout', () => {
     GrassLayerKind,
     readonly [minimum: number, maximum: number],
   ]>([
-    ['foreground', [-4.5, 4.4]],
+    ['foreground', [-4.5, 5]],
     ['middle', [-16, -3.5]],
     ['horizon', [-34, -14]],
   ])('keeps %s roots inside its visible depth band', (kind, [minimum, maximum]) => {
@@ -282,22 +241,6 @@ describe('layered grass layout', () => {
       expect(z).toBeLessThanOrEqual(maximum)
       expect(y).toBeCloseTo(terrainHeight(x, z), 5)
     }
-  })
-
-  it('uses perspective-aware foreground height near the horizon', () => {
-    const layout = createGrassLayerLayout(8_000, 'foreground', 4_219)
-    const nearScales: number[] = []
-    const farScales: number[] = []
-    for (let index = 0; index < layout.scales.length; index += 1) {
-      const depth = layout.offsets[index * 3 + 2]
-      if (depth > 1.5) nearScales.push(layout.scales[index])
-      if (depth < -3) farScales.push(layout.scales[index])
-    }
-    const average = (values: number[]) =>
-      values.reduce((sum, value) => sum + value, 0) / values.length
-
-    expect(average(farScales)).toBeLessThan(average(nearScales) * 0.88)
-    expect(Math.max(...nearScales)).toBeGreaterThan(1.35)
   })
 
   it.each<[
