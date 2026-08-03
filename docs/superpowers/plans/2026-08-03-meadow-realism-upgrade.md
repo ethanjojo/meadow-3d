@@ -85,11 +85,25 @@ expect(frame.progress).toBe(0)
 expect(frame.source.dayPhase).toBeCloseTo(auto0.dayPhase)
 expect(frame.target.dayPhase).toBe(manual.dayPhase)
 
-frame = stepEnvironmentTransition(frame, sampleNatureClock(91.5), manual, 1.5)
+for (let tick = 1; tick <= 90; tick += 1) {
+  frame = stepEnvironmentTransition(
+    frame,
+    sampleNatureClock(90 + tick / 60),
+    manual,
+    1 / 60,
+  )
+}
 expect(frame.progress).toBeCloseTo(0.5)
 expect(frame.snapshot.autoElapsed).toBeCloseTo(91.5)
 
-frame = stepEnvironmentTransition(frame, sampleNatureClock(93), manual, 1.5)
+for (let tick = 91; tick <= 180; tick += 1) {
+  frame = stepEnvironmentTransition(
+    frame,
+    sampleNatureClock(90 + tick / 60),
+    manual,
+    1 / 60,
+  )
+}
 expect(frame.progress).toBe(1)
 expect(frame.active).toBe(false)
 expect(frame.snapshot.dayPhase).toBeCloseTo(manual.dayPhase)
@@ -137,7 +151,7 @@ function easeInOut(amount: number) {
 `createEnvironmentTransition` returns a settled frame whose source, target, and snapshot all equal the current requested state. `stepEnvironmentTransition` must:
 
 ```ts
-const delta = Number.isFinite(deltaSeconds) ? clamp(deltaSeconds, 0, 0.1) : 0
+const delta = Number.isFinite(deltaSeconds) ? clamp(deltaSeconds, 0, 0.5) : 0
 const requested = createEnvironmentSnapshot(auto, settings)
 const nextKey = getSettingsKey(settings)
 
@@ -165,7 +179,7 @@ Keep the old exponential `stepEnvironment` export temporarily so the existing Na
 
 Run: `npm test -- tests/core/simulation.test.ts tests/core/simulation.integration.test.ts`
 
-Expected: PASS for fixed duration, retargeting, delta cap, and live Auto return.
+Expected: PASS for fixed duration over 180 ordinary frames, retargeting, the `0.5` second stall cap, and live Auto return.
 
 Run: `npm test`
 
