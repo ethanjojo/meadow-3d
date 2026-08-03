@@ -1,6 +1,6 @@
 export const QUALITY_PROFILES = {
   low: {
-    grassBlades: 18_000,
+    grassBlades: 8_000,
     particles: 400,
     shadowSize: 0,
     maxDpr: 1,

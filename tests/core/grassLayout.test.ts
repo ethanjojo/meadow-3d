@@ -12,6 +12,7 @@ import {
   type GrassLayerKind,
 } from '../../src/core/grassLayout'
 import {
+  getGrassShaderDefines,
   grassFragmentShader,
   grassVertexShader,
 } from '../../src/scene/grassShaders'
@@ -176,6 +177,13 @@ describe('layered grass layout', () => {
     expect(grassFragmentShader).toContain('uniform sampler2D uGrassSurfaceAtlas')
     expect(grassFragmentShader).toContain('if (atlasColor.a < 0.28) discard')
     expect(grassFragmentShader).toContain('uUseTransmission')
+  })
+
+  it('compiles a cheaper low-tier fragment path without removing weather light', () => {
+    expect(getGrassShaderDefines(false)).toEqual({ SIMPLE_GRASS_LIGHTING: 1 })
+    expect(getGrassShaderDefines(true)).toEqual({})
+    expect(grassFragmentShader).toContain('#ifndef SIMPLE_GRASS_LIGHTING')
+    expect(grassFragmentShader).toContain('uStormFlash')
   })
 
   it('allocates every blade across foreground, middle, and horizon layers', () => {

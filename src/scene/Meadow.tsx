@@ -29,7 +29,11 @@ import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
-import { grassFragmentShader, grassVertexShader } from './grassShaders'
+import {
+  getGrassShaderDefines,
+  grassFragmentShader,
+  grassVertexShader,
+} from './grassShaders'
 import {
   createGrassTextureFallbacks,
   loadGrassTextures,
@@ -176,10 +180,12 @@ function createGrassMaterial(
   colorAtlas: Texture,
   surfaceAtlas: Texture,
   useTransmission: boolean,
+  detailedLighting: boolean,
 ) {
   return new ShaderMaterial({
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
+    defines: getGrassShaderDefines(detailedLighting),
     side: DoubleSide,
     toneMapped: true,
     uniforms: {
@@ -242,9 +248,15 @@ export function Meadow({
         fallbackTextures.color,
         fallbackTextures.surface,
         quality.grassTransmission && grassLayerUsesAtlas(layer.kind),
+        quality.grassAtlas && grassLayerUsesAtlas(layer.kind),
       ),
     }))
-  }, [fallbackTextures, quality.grassBlades, quality.grassTransmission])
+  }, [
+    fallbackTextures,
+    quality.grassAtlas,
+    quality.grassBlades,
+    quality.grassTransmission,
+  ])
   const groundGeometry = useMemo(createGroundGeometry, [])
 
   useEffect(

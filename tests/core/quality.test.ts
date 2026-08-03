@@ -41,6 +41,7 @@ describe('quality selection', () => {
   })
 
   it('keeps the low tier materially cheaper than high', () => {
+    expect(QUALITY_PROFILES.low.grassBlades).toBeLessThanOrEqual(8_000)
     expect(QUALITY_PROFILES.low.grassBlades).toBeLessThan(
       QUALITY_PROFILES.high.grassBlades,
     )
