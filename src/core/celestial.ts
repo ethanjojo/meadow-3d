@@ -9,6 +9,20 @@ export interface CelestialState {
   moon: CelestialBodyState
 }
 
+export type CelestialBodyKind = 'sun' | 'moon'
+
+export interface CelestialArcPoint {
+  x: number
+  y: number
+  opacity: number
+  scaleY: number
+}
+
+export interface CelestialPresentation {
+  sun: CelestialArcPoint
+  moon: CelestialArcPoint
+}
+
 export interface ShootingStarState {
   active: boolean
   progress: number
@@ -26,9 +40,220 @@ function clamp01(value: number) {
   return Math.min(1, Math.max(0, value))
 }
 
+function wrap01(value: number) {
+  return ((value % 1) + 1) % 1
+}
+
+function easeInOut(value: number) {
+  const amount = clamp01(value)
+  return amount * amount * (3 - 2 * amount)
+}
+
 function smoothstep(minimum: number, maximum: number, value: number) {
   const amount = clamp01((value - minimum) / (maximum - minimum))
   return amount * amount * (3 - 2 * amount)
+}
+
+function getArcProgress(kind: CelestialBodyKind, dayPhase: number) {
+  const phase = wrap01(dayPhase)
+  if (kind === 'sun') {
+    if (phase < 0.25) return { progress: 0, visible: false }
+    if (phase > 0.75) return { progress: 1, visible: false }
+    return { progress: (phase - 0.25) / 0.5, visible: true }
+  }
+
+  const relative = wrap01(phase - 0.75)
+  if (relative <= 0.5) {
+    return { progress: relative / 0.5, visible: true }
+  }
+  return { progress: relative < 0.75 ? 1 : 0, visible: false }
+}
+
+function getVisibleBody(dayPhase: number): CelestialBodyKind {
+  const phase = wrap01(dayPhase)
+  return phase >= 0.25 && phase <= 0.75 ? 'sun' : 'moon'
+}
+
+function circularDistance(from: number, to: number) {
+  return Math.abs(wrap01(to - from + 0.5) - 0.5)
+}
+
+function createArcPoint(): CelestialArcPoint {
+  return { x: 0, y: -0.04, opacity: 0, scaleY: 0.92 }
+}
+
+function createPresentation(): CelestialPresentation {
+  return { sun: createArcPoint(), moon: createArcPoint() }
+}
+
+function copyArcPoint(source: CelestialArcPoint, output: CelestialArcPoint) {
+  output.x = source.x
+  output.y = source.y
+  output.opacity = source.opacity
+  output.scaleY = source.scaleY
+  return output
+}
+
+function copyPresentation(
+  source: CelestialPresentation,
+  output: CelestialPresentation,
+) {
+  copyArcPoint(source.sun, output.sun)
+  copyArcPoint(source.moon, output.moon)
+  return output
+}
+
+function interpolateArcPoint(
+  source: CelestialArcPoint,
+  target: CelestialArcPoint,
+  positionAmount: number,
+  opacityAmount: number,
+  output: CelestialArcPoint,
+) {
+  output.x = source.x + (target.x - source.x) * positionAmount
+  output.y = source.y + (target.y - source.y) * positionAmount
+  output.opacity =
+    source.opacity + (target.opacity - source.opacity) * opacityAmount
+  output.scaleY =
+    source.scaleY + (target.scaleY - source.scaleY) * positionAmount
+  return output
+}
+
+const SOURCE_PRESENTATION_SCRATCH = createPresentation()
+const TARGET_PRESENTATION_SCRATCH = createPresentation()
+const HORIZON_POINT_SCRATCH = createArcPoint()
+
+export function getCelestialArcPoint(
+  kind: CelestialBodyKind,
+  dayPhase: number,
+  aspect: number,
+  output: CelestialArcPoint = createArcPoint(),
+): CelestialArcPoint {
+  const { progress, visible } = getArcProgress(kind, dayPhase)
+  const safeAspect = Number.isFinite(aspect) ? Math.max(0.46, aspect) : 1
+  const portraitAmount = clamp01((safeAspect - 0.46) / 0.54)
+  const peak = 0.52 + portraitAmount * 0.16
+  const arcHeight = Math.sin(progress * Math.PI)
+  output.x = -0.9 + progress * 1.8
+  output.y = -0.04 + arcHeight * peak
+  output.opacity =
+    visible && progress > 0 && progress < 1
+      ? smoothstep(0, 0.08, arcHeight)
+      : 0
+  output.scaleY = 0.92 + smoothstep(0, 0.18, arcHeight) * 0.08
+  return output
+}
+
+function writeHorizonPoint(x: number) {
+  HORIZON_POINT_SCRATCH.x = x
+  HORIZON_POINT_SCRATCH.y = -0.04
+  HORIZON_POINT_SCRATCH.opacity = 0
+  HORIZON_POINT_SCRATCH.scaleY = 0.92
+  return HORIZON_POINT_SCRATCH
+}
+
+export function getCelestialPresentation(
+  sourceDayPhase: number,
+  targetDayPhase: number,
+  amount: number,
+  aspect: number,
+  reducedMotion: boolean,
+  output: CelestialPresentation = createPresentation(),
+  frozenSource?: CelestialPresentation,
+): CelestialPresentation {
+  const source = frozenSource ?? SOURCE_PRESENTATION_SCRATCH
+  if (!frozenSource) {
+    getCelestialArcPoint('sun', sourceDayPhase, aspect, source.sun)
+    getCelestialArcPoint('moon', sourceDayPhase, aspect, source.moon)
+  }
+  const target = TARGET_PRESENTATION_SCRATCH
+  getCelestialArcPoint('sun', targetDayPhase, aspect, target.sun)
+  getCelestialArcPoint('moon', targetDayPhase, aspect, target.moon)
+
+  const linearAmount = clamp01(amount)
+  if (linearAmount === 0) return copyPresentation(source, output)
+  if (linearAmount === 1) return copyPresentation(target, output)
+
+  const eased = easeInOut(linearAmount)
+  const travelScale = reducedMotion ? 0.35 : 1
+  const sourceKind = frozenSource
+    ? frozenSource.sun.opacity >= frozenSource.moon.opacity
+      ? 'sun'
+      : 'moon'
+    : getVisibleBody(sourceDayPhase)
+  const targetKind = getVisibleBody(targetDayPhase)
+  const shortSameBodyArc =
+    circularDistance(sourceDayPhase, targetDayPhase) <= 0.25 &&
+    sourceKind === targetKind
+
+  if (shortSameBodyArc) {
+    const positionAmount = eased * travelScale
+    interpolateArcPoint(
+      source.sun,
+      target.sun,
+      positionAmount,
+      eased,
+      output.sun,
+    )
+    interpolateArcPoint(
+      source.moon,
+      target.moon,
+      positionAmount,
+      eased,
+      output.moon,
+    )
+    return output
+  }
+
+  const outgoing = source[sourceKind]
+  const incoming = target[targetKind]
+  const outgoingHorizonX = outgoing.x < 0 ? -0.9 : 0.9
+  const incomingHorizonX = -outgoingHorizonX
+  const outgoingAmount = clamp01(eased * 2)
+  const incomingAmount = clamp01(eased * 2 - 1)
+
+  if (sourceKind !== targetKind) {
+    interpolateArcPoint(
+      outgoing,
+      writeHorizonPoint(outgoingHorizonX),
+      outgoingAmount * travelScale,
+      outgoingAmount,
+      output[sourceKind],
+    )
+    output[sourceKind].opacity = outgoing.opacity * (1 - outgoingAmount)
+    interpolateArcPoint(
+      writeHorizonPoint(incomingHorizonX),
+      incoming,
+      incomingAmount * travelScale,
+      incomingAmount,
+      output[targetKind],
+    )
+    output[targetKind].opacity = incoming.opacity * incomingAmount
+    return output
+  }
+
+  const hiddenKind = sourceKind === 'sun' ? 'moon' : 'sun'
+  copyArcPoint(target[hiddenKind], output[hiddenKind])
+  if (eased <= 0.5) {
+    interpolateArcPoint(
+      outgoing,
+      writeHorizonPoint(outgoingHorizonX),
+      outgoingAmount * travelScale,
+      outgoingAmount,
+      output[sourceKind],
+    )
+    output[sourceKind].opacity = outgoing.opacity * (1 - outgoingAmount)
+  } else {
+    interpolateArcPoint(
+      writeHorizonPoint(incomingHorizonX),
+      incoming,
+      incomingAmount * travelScale,
+      incomingAmount,
+      output[targetKind],
+    )
+    output[targetKind].opacity = incoming.opacity * incomingAmount
+  }
+  return output
 }
 
 function hash(seed: number) {

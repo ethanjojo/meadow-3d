@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { PerspectiveCamera, Vector3 } from 'three'
 import {
+  getCelestialArcPoint,
+  getCelestialPresentation,
   getCelestialState,
   getShootingStarState,
   projectShootingStarTrail,
@@ -8,6 +10,89 @@ import {
 } from '../../src/core/celestial'
 
 describe('celestial state', () => {
+  it('moves the sun from the left horizon through a central peak to the right', () => {
+    const sunrise = getCelestialArcPoint('sun', 0.25, 16 / 9)
+    const noon = getCelestialArcPoint('sun', 0.5, 16 / 9)
+    const sunset = getCelestialArcPoint('sun', 0.75, 16 / 9)
+
+    expect(sunrise.x).toBeCloseTo(-0.9)
+    expect(sunrise.y).toBeLessThan(0.05)
+    expect(noon.x).toBeCloseTo(0)
+    expect(noon.y).toBeGreaterThan(0.55)
+    expect(sunset.x).toBeCloseTo(0.9)
+    expect(sunset.y).toBeLessThan(0.05)
+  })
+
+  it('keeps the complementary moon arc lower in portrait viewports', () => {
+    const landscape = getCelestialArcPoint('moon', 0, 16 / 9)
+    const portrait = getCelestialArcPoint('moon', 0, 390 / 844)
+
+    expect(landscape.x).toBeCloseTo(0)
+    expect(portrait.x).toBeCloseTo(0)
+    expect(portrait.y).toBeLessThan(landscape.y)
+    expect(portrait.y).toBeGreaterThan(0.45)
+  })
+
+  it('uses a short same-body arc for a four-hour change', () => {
+    const sourcePhase = 0.4
+    const targetPhase = sourcePhase + 4 / 24
+    const source = getCelestialArcPoint('sun', sourcePhase, 16 / 9)
+    const target = getCelestialArcPoint('sun', targetPhase, 16 / 9)
+    const presentation = getCelestialPresentation(
+      sourcePhase,
+      targetPhase,
+      0.5,
+      16 / 9,
+      false,
+    )
+
+    expect(presentation.sun.opacity).toBeGreaterThan(0.9)
+    expect(presentation.moon.opacity).toBe(0)
+    expect(presentation.sun.x).toBeGreaterThan(source.x)
+    expect(presentation.sun.x).toBeLessThan(target.x)
+  })
+
+  it('swaps noon and midnight bodies at opposite horizons', () => {
+    const midpoint = getCelestialPresentation(0.5, 0, 0.5, 16 / 9, false)
+    const incoming = getCelestialPresentation(0.5, 0, 0.75, 16 / 9, false)
+
+    expect(midpoint.sun.x).toBeCloseTo(0.9)
+    expect(midpoint.moon.x).toBeCloseTo(-0.9)
+    expect(midpoint.sun.opacity).toBe(0)
+    expect(midpoint.moon.opacity).toBe(0)
+    expect(incoming.moon.opacity).toBeGreaterThan(0)
+    expect(incoming.moon.x).toBeGreaterThan(-0.9)
+  })
+
+  it('reduces travel while preserving opacity choreography for reduced motion', () => {
+    const source = getCelestialArcPoint('sun', 0.4, 16 / 9)
+    const normal = getCelestialPresentation(0.4, 0.55, 0.25, 16 / 9, false)
+    const reduced = getCelestialPresentation(0.4, 0.55, 0.25, 16 / 9, true)
+
+    expect(Math.abs(reduced.sun.x - source.x)).toBeLessThan(
+      Math.abs(normal.sun.x - source.x),
+    )
+    expect(reduced.sun.opacity).toBeCloseTo(normal.sun.opacity)
+  })
+
+  it('retargets from an exact frozen presentation without a jump', () => {
+    const frozen = getCelestialPresentation(0.5, 0, 0.4, 16 / 9, false)
+    const output = getCelestialPresentation(0, 0, 1, 16 / 9, false)
+    const retargeted = getCelestialPresentation(
+      0,
+      0.65,
+      0,
+      16 / 9,
+      false,
+      output,
+      frozen,
+    )
+
+    expect(retargeted).toBe(output)
+    expect(retargeted.sun).toEqual(frozen.sun)
+    expect(retargeted.moon).toEqual(frozen.moon)
+  })
+
   it('places moon opposite the sun and hides bodies below the horizon', () => {
     const noon = getCelestialState(0.5)
     const midnight = getCelestialState(0)
