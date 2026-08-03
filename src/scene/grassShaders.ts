@@ -7,6 +7,7 @@ export const grassVertexShader = /* glsl */ `
   attribute float instanceWidth;
   attribute float instanceLean;
   attribute float instanceColorVariation;
+  attribute float instanceAtlasCell;
 
   uniform float uTime;
   uniform float uWindStrength;
@@ -20,6 +21,7 @@ export const grassVertexShader = /* glsl */ `
   varying float vVariation;
   varying float vViewDepth;
   varying vec3 vBladeNormal;
+  varying vec2 vAtlasUv;
 
   mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -80,6 +82,12 @@ export const grassVertexShader = /* glsl */ `
     vHeight = heightRatio;
     vVariation = instanceColorVariation;
     vViewDepth = -viewPosition.z;
+    float atlasColumn = mod(instanceAtlasCell, 4.0);
+    float atlasRow = floor(instanceAtlasCell / 4.0);
+    vAtlasUv = vec2(
+      (atlasColumn + uv.x) / 4.0,
+      (1.0 - atlasRow + uv.y) / 2.0
+    );
     vBladeNormal = normalize(vec3(
       -windDirection.x * curvatureAngle * 0.5 - instanceLean * 0.24,
       1.0,
@@ -105,15 +113,34 @@ export const grassFragmentShader = /* glsl */ `
   uniform float uSnowCoverage;
   uniform float uLayerFade;
   uniform float uFogDensity;
+  uniform sampler2D uGrassColorAtlas;
+  uniform sampler2D uGrassSurfaceAtlas;
+  uniform float uUseAtlas;
+  uniform float uUseTransmission;
 
   varying float vHeight;
   varying float vVariation;
   varying float vViewDepth;
   varying vec3 vBladeNormal;
+  varying vec2 vAtlasUv;
 
   void main() {
+    vec4 atlasColor = vec4(1.0);
+    vec4 surfaceData = vec4(1.0, 0.5, 0.5, 1.0);
+    if (uUseAtlas > 0.5) {
+      atlasColor = texture2D(uGrassColorAtlas, vAtlasUv);
+      surfaceData = texture2D(uGrassSurfaceAtlas, vAtlasUv);
+      if (atlasColor.a < 0.28) discard;
+    }
     vec3 freshColor = mix(uGrassBase, uGrassTip, smoothstep(0.05, 1.0, vHeight));
     vec3 grassColor = mix(freshColor, uDryColor, uDryness * (0.35 + vHeight * 0.65));
+    float atlasLuminance = max(
+      dot(atlasColor.rgb, vec3(0.2126, 0.7152, 0.0722)),
+      0.18
+    );
+    vec3 atlasDetail = clamp(atlasColor.rgb / atlasLuminance, 0.72, 1.28);
+    grassColor *= mix(vec3(1.0), atlasDetail, uUseAtlas * 0.34);
+    grassColor *= mix(1.0, mix(0.92, 1.08, surfaceData.b), uUseAtlas);
     grassColor *= mix(0.86, 1.1, vVariation);
 
     float lowerBlade = 1.0 - smoothstep(0.12, 0.82, vHeight);
@@ -134,8 +161,26 @@ export const grassFragmentShader = /* glsl */ `
       uSunColor * sunFacing * 0.72 +
       uMoonColor * moonFacing * 0.48;
     vec3 litColor = grassColor * light;
-    float wetHighlight = uWetness * pow(sunFacing, 18.0) * (0.18 + lowerBlade * 0.32);
+    float roughness = mix(1.0, surfaceData.r, uUseAtlas);
+    float wetHighlight =
+      uWetness *
+      pow(sunFacing, mix(14.0, 24.0, roughness)) *
+      (0.18 + lowerBlade * 0.32);
     litColor += uSunColor * wetHighlight;
+    float backlight = max(dot(-normal, normalize(uSunDirection)), 0.0);
+    float transmission =
+      uUseTransmission *
+      surfaceData.g *
+      backlight *
+      smoothstep(0.16, 0.92, vHeight);
+    litColor += uSunColor * transmission * 0.16;
+
+    float contactDepth = 1.0 - smoothstep(5.0, 26.0, vViewDepth);
+    float rootContact =
+      (1.0 - smoothstep(0.08, 0.58, vHeight)) *
+      mix(0.12, 0.3, uLayerFade) *
+      mix(0.55, 1.0, contactDepth);
+    litColor *= 1.0 - rootContact;
 
     float fogAmount = 1.0 - exp(
       -uFogDensity * uFogDensity * vViewDepth * vViewDepth

@@ -1,4 +1,4 @@
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
   CircleGeometry,
@@ -10,6 +10,8 @@ import {
   MeshStandardMaterial,
   ShaderMaterial,
   Sphere,
+  Texture,
+  TextureLoader,
   Vector2,
   Vector3,
 } from 'three'
@@ -18,6 +20,7 @@ import {
   createGrassLayerLayout,
   getGrassBendLimit,
   getGrassLayerBudgets,
+  grassLayerUsesAtlas,
   terrainHeight,
   type GrassLayerKind,
 } from '../core/grassLayout'
@@ -27,6 +30,11 @@ import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
 import { grassFragmentShader, grassVertexShader } from './grassShaders'
+import {
+  createGrassTextureFallbacks,
+  loadGrassTextures,
+  type GrassTextureSet,
+} from './grassTextures'
 
 interface MeadowProps {
   quality: QualityProfile
@@ -139,6 +147,10 @@ function createBladeGeometry(
     'instanceColorVariation',
     new InstancedBufferAttribute(layout.colorVariation, 1),
   )
+  geometry.setAttribute(
+    'instanceAtlasCell',
+    new InstancedBufferAttribute(layout.atlasCells, 1),
+  )
   geometry.instanceCount = count
   geometry.boundingSphere = new Sphere(new Vector3(0, 0, -14), 44)
   return geometry
@@ -159,7 +171,12 @@ function createGroundGeometry() {
   return geometry
 }
 
-function createGrassMaterial(layerFade: number) {
+function createGrassMaterial(
+  layerFade: number,
+  colorAtlas: Texture,
+  surfaceAtlas: Texture,
+  useTransmission: boolean,
+) {
   return new ShaderMaterial({
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
@@ -189,6 +206,10 @@ function createGrassMaterial(layerFade: number) {
       uSnowCoverage: { value: 0 },
       uLayerFade: { value: layerFade },
       uFogDensity: { value: 0.009 },
+      uGrassColorAtlas: { value: colorAtlas },
+      uGrassSurfaceAtlas: { value: surfaceAtlas },
+      uUseAtlas: { value: 0 },
+      uUseTransmission: { value: useTransmission ? 1 : 0 },
     },
   })
 }
@@ -201,16 +222,24 @@ export function Meadow({
   effectsRef,
   reducedMotion,
 }: MeadowProps) {
+  const { gl } = useThree()
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
+  const fallbackTextures = useMemo(createGrassTextureFallbacks, [])
+  const textureLoader = useMemo(() => new TextureLoader(), [])
   const layers = useMemo(() => {
     const budgets = getGrassLayerBudgets(quality.grassBlades)
 
     return GRASS_LAYERS.map((layer) => ({
       ...layer,
       geometry: createBladeGeometry(budgets[layer.kind], layer.kind, layer.seed),
-      material: createGrassMaterial(layer.fade),
+      material: createGrassMaterial(
+        layer.fade,
+        fallbackTextures.color,
+        fallbackTextures.surface,
+        quality.grassTransmission && grassLayerUsesAtlas(layer.kind),
+      ),
     }))
-  }, [quality.grassBlades])
+  }, [fallbackTextures, quality.grassBlades, quality.grassTransmission])
   const groundGeometry = useMemo(createGroundGeometry, [])
 
   useEffect(
@@ -223,6 +252,41 @@ export function Meadow({
     [layers],
   )
   useEffect(() => () => groundGeometry.dispose(), [groundGeometry])
+  useEffect(
+    () => () => {
+      fallbackTextures.color.dispose()
+      fallbackTextures.surface.dispose()
+    },
+    [fallbackTextures],
+  )
+
+  useEffect(() => {
+    if (!quality.grassAtlas) return
+    const foreground = layers.find(({ kind }) => grassLayerUsesAtlas(kind))
+    if (!foreground) return
+    let installedTextures: GrassTextureSet | null = null
+    const stopLoading = loadGrassTextures(
+      textureLoader,
+      gl.capabilities.getMaxAnisotropy(),
+      (textures) => {
+        installedTextures = textures
+        const { uniforms } = foreground.material
+        uniforms.uGrassColorAtlas.value = textures.color
+        uniforms.uGrassSurfaceAtlas.value = textures.surface
+        uniforms.uUseAtlas.value = textures.detailed ? 1 : 0
+        uniforms.uUseTransmission.value =
+          textures.detailed && quality.grassTransmission ? 1 : 0
+      },
+    )
+
+    return () => {
+      stopLoading()
+      if (installedTextures && !installedTextures.detailed) {
+        installedTextures.color.dispose()
+        installedTextures.surface.dispose()
+      }
+    }
+  }, [gl, layers, quality.grassAtlas, quality.grassTransmission, textureLoader])
 
   useFrame(() => {
     const snapshot = snapshotRef.current

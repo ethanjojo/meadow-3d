@@ -66,4 +66,19 @@ describe('quality selection', () => {
       shootingStarPool: 3,
     })
   })
+
+  it('limits detailed grass maps and transmission by quality tier', () => {
+    expect(QUALITY_PROFILES.high).toMatchObject({
+      grassAtlas: true,
+      grassTransmission: true,
+    })
+    expect(QUALITY_PROFILES.medium).toMatchObject({
+      grassAtlas: true,
+      grassTransmission: false,
+    })
+    expect(QUALITY_PROFILES.low).toMatchObject({
+      grassAtlas: false,
+      grassTransmission: false,
+    })
+  })
 })

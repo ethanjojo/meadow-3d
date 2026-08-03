@@ -8,6 +8,8 @@ export const QUALITY_PROFILES = {
     cloudLayers: 1,
     starCount: 700,
     shootingStarPool: 1,
+    grassAtlas: false,
+    grassTransmission: false,
   },
   medium: {
     grassBlades: 48_000,
@@ -18,6 +20,8 @@ export const QUALITY_PROFILES = {
     cloudLayers: 2,
     starCount: 1_300,
     shootingStarPool: 2,
+    grassAtlas: true,
+    grassTransmission: false,
   },
   high: {
     grassBlades: 90_000,
@@ -28,6 +32,8 @@ export const QUALITY_PROFILES = {
     cloudLayers: 3,
     starCount: 2_000,
     shootingStarPool: 3,
+    grassAtlas: true,
+    grassTransmission: true,
   },
 } as const
 

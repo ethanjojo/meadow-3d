@@ -12,6 +12,7 @@ export interface GrassLayerLayout extends GrassLayout {
   widths: Float32Array
   leans: Float32Array
   colorVariation: Float32Array
+  atlasCells: Float32Array
 }
 
 export const GRASS_LAYER_RATIOS = {
@@ -86,6 +87,10 @@ export function getGrassClearance(distance: number) {
   }
 }
 
+export function grassLayerUsesAtlas(kind: GrassLayerKind) {
+  return kind === 'foreground'
+}
+
 function createMulberry32(seed: number) {
   let state = seed >>> 0
 
@@ -138,6 +143,7 @@ export function createGrassLayerLayout(
   const widths = new Float32Array(bladeCount)
   const leans = new Float32Array(bladeCount)
   const colorVariation = new Float32Array(bladeCount)
+  const atlasCells = new Float32Array(bladeCount)
 
   for (let index = 0; index < bladeCount; index += 1) {
     const depthProgress = random()
@@ -167,6 +173,7 @@ export function createGrassLayerLayout(
     widths[index] = 0.7 + random() * 0.72
     leans[index] = minimumLean + random() * (maximumLean - minimumLean)
     colorVariation[index] = random()
+    atlasCells[index] = Math.floor(random() * 8)
   }
 
   return {
@@ -178,6 +185,7 @@ export function createGrassLayerLayout(
     widths,
     leans,
     colorVariation,
+    atlasCells,
   }
 }
 

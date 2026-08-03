@@ -7,10 +7,14 @@ import {
   getGrassClearance,
   getGrassLayerBudgets,
   getGrassRootInfluence,
+  grassLayerUsesAtlas,
   terrainHeight,
   type GrassLayerKind,
 } from '../../src/core/grassLayout'
-import { grassVertexShader } from '../../src/scene/grassShaders'
+import {
+  grassFragmentShader,
+  grassVertexShader,
+} from '../../src/scene/grassShaders'
 
 describe('createGrassLayout', () => {
   it('is deterministic and keeps blades inside the meadow radius', () => {
@@ -164,6 +168,16 @@ describe('layered grass layout', () => {
     )
   })
 
+  it('maps deterministic cells and samples detailed blades only when enabled', () => {
+    expect(grassVertexShader).toContain('attribute float instanceAtlasCell')
+    expect(grassVertexShader).toContain('mod(instanceAtlasCell, 4.0)')
+    expect(grassVertexShader).toContain('floor(instanceAtlasCell / 4.0)')
+    expect(grassFragmentShader).toContain('uniform sampler2D uGrassColorAtlas')
+    expect(grassFragmentShader).toContain('uniform sampler2D uGrassSurfaceAtlas')
+    expect(grassFragmentShader).toContain('if (atlasColor.a < 0.28) discard')
+    expect(grassFragmentShader).toContain('uUseTransmission')
+  })
+
   it('allocates every blade across foreground, middle, and horizon layers', () => {
     const budgets = getGrassLayerBudgets(1_000)
 
@@ -183,6 +197,21 @@ describe('layered grass layout', () => {
     expect(first.leans).toHaveLength(64)
     expect(first.colorVariation).toHaveLength(64)
     expect(Math.max(...first.scales)).toBeGreaterThan(1.2)
+  })
+
+  it('assigns deterministic atlas cells and enables them only in front', () => {
+    const first = createGrassLayerLayout(512, 'foreground', 42)
+    const second = createGrassLayerLayout(512, 'foreground', 42)
+
+    expect(Array.from(first.atlasCells)).toEqual(Array.from(second.atlasCells))
+    for (const cell of first.atlasCells) {
+      expect(Number.isInteger(cell)).toBe(true)
+      expect(cell).toBeGreaterThanOrEqual(0)
+      expect(cell).toBeLessThanOrEqual(7)
+    }
+    expect(grassLayerUsesAtlas('foreground')).toBe(true)
+    expect(grassLayerUsesAtlas('middle')).toBe(false)
+    expect(grassLayerUsesAtlas('horizon')).toBe(false)
   })
 
   it.each<[
