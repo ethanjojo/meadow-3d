@@ -2,10 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
 import { getAtmosphere } from '../../src/core/atmosphere'
+import {
+  createEnvironmentSnapshot,
+  type WeatherPreset,
+} from '../../src/core/simulation'
 
-function sampleAtDayPhase(dayPhase: number) {
+function sampleAtDayPhase(dayPhase: number, weather: WeatherPreset = 'clear') {
   const snapshot = sampleNatureClock(DEFAULT_CLOCK.dayDuration * dayPhase)
-  return getAtmosphere(snapshot, getSeasonAppearance(snapshot))
+  const environment = createEnvironmentSnapshot(snapshot, {
+    mode: 'manual',
+    dayPhase,
+    seasonIndex: snapshot.seasonIndex,
+    weather,
+  })
+  return getAtmosphere(environment, getSeasonAppearance(environment))
 }
 
 describe('getAtmosphere', () => {
@@ -29,5 +39,17 @@ describe('getAtmosphere', () => {
       expect(atmosphere.exposure).toBeGreaterThanOrEqual(0.55)
       expect(atmosphere.exposure).toBeLessThanOrEqual(1.15)
     }
+  })
+
+  it('uses weather cover to dim stars and celestial halos coherently', () => {
+    const clearNight = sampleAtDayPhase(0, 'clear')
+    const foggyNight = sampleAtDayPhase(0, 'fog')
+    const stormyDay = sampleAtDayPhase(0.5, 'storm')
+    const clearDay = sampleAtDayPhase(0.5, 'clear')
+
+    expect(clearNight.cloudOpacity).toBeLessThan(stormyDay.cloudOpacity)
+    expect(foggyNight.starOpacity).toBeLessThan(clearNight.starOpacity)
+    expect(stormyDay.sunHalo).toBeLessThan(clearDay.sunHalo)
+    expect(clearNight.moonHalo).toBeGreaterThan(0.5)
   })
 })

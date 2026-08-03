@@ -8,19 +8,23 @@ import {
   Color,
   DirectionalLight,
   FogExp2,
-  PointsMaterial,
   ShaderMaterial,
   Vector3,
 } from 'three'
-import { getAtmosphere } from '../core/atmosphere'
-import type { NatureSnapshot } from '../core/natureClock'
+import { getAtmosphere, type AtmosphereState } from '../core/atmosphere'
+import { getCelestialState } from '../core/celestial'
 import type { QualityProfile } from '../core/quality'
 import type { SeasonAppearance } from '../core/season'
+import type { EnvironmentSnapshot } from '../core/simulation'
+import { CelestialBodies } from './CelestialBodies'
+import { CloudLayer } from './CloudLayer'
+import { ShootingStars } from './ShootingStars'
 
 interface AtmosphereProps {
   quality: QualityProfile
-  snapshotRef: MutableRefObject<NatureSnapshot>
+  snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
+  reducedMotion: boolean
   visible: boolean
 }
 
@@ -44,26 +48,55 @@ const skyFragmentShader = /* glsl */ `
   void main() {
     float height = smoothstep(-0.13, 0.72, vWorldDirection.y);
     vec3 color = mix(uHorizonColor, uTopColor, height);
-    float sunDisc = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 850.0);
     float sunHalo = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 18.0);
     color += vec3(1.0, 0.77, 0.46) * sunHalo * uSunGlow * 0.25;
-    color += vec3(1.0, 0.91, 0.68) * sunDisc * uSunGlow * 2.2;
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `
 
-function createStars() {
+const starVertexShader = /* glsl */ `
+  attribute float size;
+  attribute float brightness;
+  attribute float phase;
+  uniform float uTime;
+  varying float vBrightness;
+
+  void main() {
+    vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+    float twinkle = 0.88 + sin(uTime * 0.7 + phase) * 0.12;
+    vBrightness = brightness * twinkle;
+    gl_PointSize = size * (150.0 / max(1.0, -viewPosition.z));
+    gl_Position = projectionMatrix * viewPosition;
+  }
+`
+
+const starFragmentShader = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  varying float vBrightness;
+
+  void main() {
+    float radius = length(gl_PointCoord - 0.5) * 2.0;
+    float alpha = (1.0 - smoothstep(0.28, 1.0, radius)) * vBrightness * uOpacity;
+    gl_FragColor = vec4(uColor, alpha);
+  }
+`
+
+function createStars(count: number) {
   const geometry = new BufferGeometry()
-  const positions = new Float32Array(1_800 * 3)
+  const positions = new Float32Array(count * 3)
+  const sizes = new Float32Array(count)
+  const brightness = new Float32Array(count)
+  const phases = new Float32Array(count)
   let state = 9_823
   const random = () => {
     state = (state * 1_664_525 + 1_013_904_223) >>> 0
     return state / 4_294_967_296
   }
 
-  for (let index = 0; index < 1_800; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     const azimuth = random() * Math.PI * 2
     const elevation = 0.08 + random() * (Math.PI / 2 - 0.08)
     const radius = 82 + random() * 7
@@ -71,9 +104,15 @@ function createStars() {
     positions[offset] = Math.cos(azimuth) * Math.cos(elevation) * radius
     positions[offset + 1] = Math.sin(elevation) * radius
     positions[offset + 2] = Math.sin(azimuth) * Math.cos(elevation) * radius
+    sizes[index] = 1.35 + random() * 2.15
+    brightness[index] = 0.55 + random() * 0.45
+    phases[index] = random() * Math.PI * 2
   }
 
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
+  geometry.setAttribute('size', new BufferAttribute(sizes, 1))
+  geometry.setAttribute('brightness', new BufferAttribute(brightness, 1))
+  geometry.setAttribute('phase', new BufferAttribute(phases, 1))
   return geometry
 }
 
@@ -81,21 +120,31 @@ export function Atmosphere({
   quality,
   snapshotRef,
   seasonRef,
+  reducedMotion,
   visible,
 }: AtmosphereProps) {
   const { gl } = useThree()
   const sunRef = useRef<DirectionalLight>(null)
   const moonRef = useRef<DirectionalLight>(null)
   const fogRef = useRef<FogExp2>(null)
-  const starsGeometry = useMemo(createStars, [])
+  const atmosphereRef = useRef<AtmosphereState>(
+    getAtmosphere(snapshotRef.current, seasonRef.current),
+  )
+  const starsGeometry = useMemo(
+    () => createStars(quality.starCount),
+    [quality.starCount],
+  )
   const starsMaterial = useMemo(
     () =>
-      new PointsMaterial({
-        color: '#dbe7ec',
-        size: 0.24,
-        sizeAttenuation: true,
+      new ShaderMaterial({
+        vertexShader: starVertexShader,
+        fragmentShader: starFragmentShader,
+        uniforms: {
+          uColor: { value: new Color('#dbe7ec') },
+          uOpacity: { value: 0 },
+          uTime: { value: 0 },
+        },
         transparent: true,
-        opacity: 0,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -146,16 +195,17 @@ export function Atmosphere({
 
     const snapshot = snapshotRef.current
     const state = getAtmosphere(snapshot, seasonRef.current)
-    const orbitAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
-    const sunX = Math.sin(orbitAngle) * 18
-    const sunY = Math.sin(orbitAngle) * 78
-    const sunZ = -Math.cos(orbitAngle) * 78
+    atmosphereRef.current = state
+    const celestial = getCelestialState(snapshot.dayPhase)
+    const sunDirection = celestial.sun.direction
+    const moonDirection = celestial.moon.direction
 
     skyMaterial.uniforms.uTopColor.value.copy(state.skyTop)
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)
-    skyMaterial.uniforms.uSunDirection.value.set(sunX, sunY, sunZ).normalize()
-    skyMaterial.uniforms.uSunGlow.value = state.sunIntensity
-    starsMaterial.opacity = state.starOpacity
+    skyMaterial.uniforms.uSunDirection.value.set(...sunDirection)
+    skyMaterial.uniforms.uSunGlow.value = state.sunHalo
+    starsMaterial.uniforms.uOpacity.value = state.starOpacity
+    starsMaterial.uniforms.uTime.value = snapshot.autoElapsed
     gl.toneMappingExposure = state.exposure
 
     if (fogRef.current) {
@@ -163,12 +213,12 @@ export function Atmosphere({
       fogRef.current.density = state.fogDensity
     }
     if (sunRef.current) {
-      sunRef.current.position.set(sunX, sunY, sunZ)
+      sunRef.current.position.set(...sunDirection).multiplyScalar(78)
       sunRef.current.intensity = state.sunIntensity
       sunRef.current.color.set(state.sunElevation < 0.35 ? '#ffd09a' : '#fff2cf')
     }
     if (moonRef.current) {
-      moonRef.current.position.set(-sunX, -sunY, -sunZ)
+      moonRef.current.position.set(...moonDirection).multiplyScalar(78)
       moonRef.current.intensity = state.moonIntensity
     }
   })
@@ -189,6 +239,24 @@ export function Atmosphere({
         <primitive object={skyMaterial} attach="material" />
       </mesh>
       <points geometry={starsGeometry} material={starsMaterial} frustumCulled={false} />
+      <CelestialBodies
+        snapshotRef={snapshotRef}
+        atmosphereRef={atmosphereRef}
+        visible={visible}
+      />
+      <CloudLayer
+        quality={quality}
+        snapshotRef={snapshotRef}
+        atmosphereRef={atmosphereRef}
+        visible={visible}
+      />
+      <ShootingStars
+        quality={quality}
+        snapshotRef={snapshotRef}
+        atmosphereRef={atmosphereRef}
+        reducedMotion={reducedMotion}
+        visible={visible}
+      />
     </>
   )
 }

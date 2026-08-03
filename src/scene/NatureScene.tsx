@@ -85,6 +85,7 @@ export function NatureScene({
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
+        reducedMotion={reducedMotion}
         visible={visible}
       />
       <Meadow

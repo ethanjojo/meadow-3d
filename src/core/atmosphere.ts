@@ -1,6 +1,7 @@
 import { Color } from 'three'
-import type { NatureSnapshot } from './natureClock'
+import { getCelestialState } from './celestial'
 import type { SeasonAppearance } from './season'
+import type { EnvironmentSnapshot } from './simulation'
 
 export interface AtmosphereState {
   skyTop: Color
@@ -11,6 +12,12 @@ export interface AtmosphereState {
   sunIntensity: number
   moonIntensity: number
   starOpacity: number
+  sunVisibility: number
+  moonVisibility: number
+  sunHalo: number
+  moonHalo: number
+  cloudOpacity: number
+  cloudSpeed: number
   fogDensity: number
   exposure: number
 }
@@ -25,14 +32,34 @@ function smoothstep(minimum: number, maximum: number, value: number) {
 }
 
 export function getAtmosphere(
-  snapshot: NatureSnapshot,
+  snapshot: EnvironmentSnapshot,
   season: SeasonAppearance,
 ): AtmosphereState {
   const solarAngle = snapshot.dayPhase * Math.PI * 2 - Math.PI / 2
   const sunElevation = Math.sin(solarAngle)
   const daylight = smoothstep(-0.12, 0.18, sunElevation)
   const twilight = 1 - Math.abs(clamp(sunElevation * 2.4, -1, 1))
-  const starOpacity = 1 - smoothstep(-0.28, 0.04, sunElevation)
+  const celestial = getCelestialState(snapshot.dayPhase)
+  const cloudOpacity = clamp(
+    snapshot.weather.cloudCover * (0.72 + snapshot.weather.storm * 0.18),
+    0,
+    0.94,
+  )
+  const cloudTransmission = 1 - cloudOpacity * 0.88
+  const fogTransmission = 1 - snapshot.weather.fog * 0.76
+  const starOpacity =
+    (1 - smoothstep(-0.28, 0.04, sunElevation)) *
+    cloudTransmission *
+    fogTransmission *
+    (1 - celestial.moon.visibility * 0.1)
+  const sunVisibility =
+    celestial.sun.visibility *
+    (1 - cloudOpacity * 0.62) *
+    (1 - snapshot.weather.fog * 0.52)
+  const moonVisibility =
+    celestial.moon.visibility *
+    (1 - cloudOpacity * 0.68) *
+    (1 - snapshot.weather.fog * 0.6)
 
   const nightTop = new Color('#071423')
   const dayTop = new Color('#286f9f')
@@ -51,14 +78,21 @@ export function getAtmosphere(
     fogColor,
     sunElevation,
     sunAzimuth: solarAngle,
-    sunIntensity: 0.05 + daylight * 2.05,
-    moonIntensity: 0.035 + (1 - daylight) * 0.32,
+    sunIntensity: 0.05 + daylight * (0.65 + sunVisibility * 1.4),
+    moonIntensity: 0.035 + (1 - daylight) * moonVisibility * 0.32,
     starOpacity,
+    sunVisibility,
+    moonVisibility,
+    sunHalo: celestial.sun.halo * cloudTransmission * fogTransmission,
+    moonHalo: celestial.moon.halo * cloudTransmission * fogTransmission,
+    cloudOpacity,
+    cloudSpeed: 0.004 + snapshot.weather.windStrength * 0.014,
     fogDensity: clamp(
       0.007 +
         season.frost * 0.006 +
         snapshot.weatherIntensity * 0.012 -
-        daylight * 0.002,
+        daylight * 0.002 +
+        snapshot.weather.fog * 0.018,
       0.002,
       0.04,
     ),
