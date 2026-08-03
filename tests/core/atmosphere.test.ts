@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CLOCK, sampleNatureClock } from '../../src/core/natureClock'
 import { getSeasonAppearance } from '../../src/core/season'
-import { getAtmosphere } from '../../src/core/atmosphere'
+import { advanceCloudPhase, getAtmosphere } from '../../src/core/atmosphere'
 import {
   createEnvironmentSnapshot,
   type WeatherPreset,
@@ -51,5 +51,14 @@ describe('getAtmosphere', () => {
     expect(foggyNight.starOpacity).toBeLessThan(clearNight.starOpacity)
     expect(stormyDay.sunHalo).toBeLessThan(clearDay.sunHalo)
     expect(clearNight.moonHalo).toBeGreaterThan(0.5)
+  })
+
+  it('advances cloud phase continuously when weather changes after long uptime', () => {
+    const longRunningPhase = 100
+    const afterSpeedChange = advanceCloudPhase(longRunningPhase, 0.1, 0.011)
+    const afterLongFrame = advanceCloudPhase(afterSpeedChange, 4, 0.011)
+
+    expect(afterSpeedChange - longRunningPhase).toBeCloseTo(0.0011, 8)
+    expect(afterLongFrame - afterSpeedChange).toBeCloseTo(0.0011, 8)
   })
 })

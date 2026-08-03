@@ -31,6 +31,19 @@ function smoothstep(minimum: number, maximum: number, value: number) {
   return normalized * normalized * (3 - 2 * normalized)
 }
 
+export function advanceCloudPhase(
+  phase: number,
+  deltaSeconds: number,
+  speed: number,
+) {
+  const safePhase = Number.isFinite(phase) ? phase : 0
+  const safeDelta = Number.isFinite(deltaSeconds)
+    ? clamp(deltaSeconds, 0, 0.1)
+    : 0
+  const safeSpeed = Number.isFinite(speed) ? Math.max(0, speed) : 0
+  return safePhase + safeDelta * safeSpeed
+}
+
 export function getAtmosphere(
   snapshot: EnvironmentSnapshot,
   season: SeasonAppearance,

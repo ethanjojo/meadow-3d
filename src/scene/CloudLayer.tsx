@@ -1,12 +1,15 @@
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useMemo, type MutableRefObject } from 'react'
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
   Color,
   DoubleSide,
   ShaderMaterial,
   Vector2,
 } from 'three'
-import type { AtmosphereState } from '../core/atmosphere'
+import {
+  advanceCloudPhase,
+  type AtmosphereState,
+} from '../core/atmosphere'
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 
@@ -87,6 +90,7 @@ export function CloudLayer({
   atmosphereRef,
   visible,
 }: CloudLayerProps) {
+  const cloudPhaseRef = useRef(0)
   const materials = useMemo(
     () =>
       Array.from({ length: quality.cloudLayers }, (_, layer) =>
@@ -102,15 +106,20 @@ export function CloudLayer({
     [materials],
   )
 
-  useFrame(() => {
+  useFrame((_, deltaSeconds) => {
     if (!visible) return
 
     const snapshot = snapshotRef.current
     const atmosphere = atmosphereRef.current
+    cloudPhaseRef.current = advanceCloudPhase(
+      cloudPhaseRef.current,
+      deltaSeconds,
+      atmosphere.cloudSpeed,
+    )
     for (const material of materials) {
       material.uniforms.uCloudCover.value = snapshot.weather.cloudCover
       material.uniforms.uStorm.value = snapshot.weather.storm
-      material.uniforms.uTime.value = snapshot.autoElapsed * atmosphere.cloudSpeed
+      material.uniforms.uTime.value = cloudPhaseRef.current
       material.uniforms.uWind.value.set(...snapshot.weather.windDirection)
     }
   })

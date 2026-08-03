@@ -70,26 +70,34 @@ export function ShootingStars({
     const snapshot = snapshotRef.current
     const atmosphere = atmosphereRef.current
     const elapsed = snapshot.autoElapsed * (reducedMotion ? 0.45 : 1)
+    const schedules = [0, 1, 2].map((slot) =>
+      getShootingStarState(elapsed, 731, slot, atmosphere.starOpacity),
+    )
+    const activeLane = schedules.findIndex((state) => state.active)
+    const activeState = schedules[Math.max(0, activeLane)]
+    const assignedTrail = activeLane >= 0 ? activeLane % trails.length : -1
 
     trails.forEach((trail, slot) => {
-      const state = getShootingStarState(elapsed, 731, slot, atmosphere.starOpacity)
       const line = trailsRef.current[slot]
       const positions = trail.geometry.getAttribute('position') as BufferAttribute
-      const tailProgress = Math.max(0, state.progress - (reducedMotion ? 0.22 : 0.38))
+      const tailProgress = Math.max(
+        0,
+        activeState.progress - (reducedMotion ? 0.22 : 0.38),
+      )
 
       head
         .set(
-          state.start[0] + state.direction[0] * state.progress,
-          state.start[1] + state.direction[1] * state.progress,
-          state.start[2] + state.direction[2] * state.progress,
+          activeState.start[0] + activeState.direction[0] * activeState.progress,
+          activeState.start[1] + activeState.direction[1] * activeState.progress,
+          activeState.start[2] + activeState.direction[2] * activeState.progress,
         )
         .normalize()
         .multiplyScalar(76)
       tail
         .set(
-          state.start[0] + state.direction[0] * tailProgress,
-          state.start[1] + state.direction[1] * tailProgress,
-          state.start[2] + state.direction[2] * tailProgress,
+          activeState.start[0] + activeState.direction[0] * tailProgress,
+          activeState.start[1] + activeState.direction[1] * tailProgress,
+          activeState.start[2] + activeState.direction[2] * tailProgress,
         )
         .normalize()
         .multiplyScalar(76)
@@ -97,8 +105,11 @@ export function ShootingStars({
       positions.setXYZ(0, tail.x, tail.y, tail.z)
       positions.setXYZ(1, head.x, head.y, head.z)
       positions.needsUpdate = true
-      trail.material.opacity = state.brightness * 0.9
-      if (line) line.visible = state.active && state.brightness > 0.002
+      trail.material.opacity = assignedTrail === slot ? activeState.brightness * 0.9 : 0
+      if (line) {
+        line.visible =
+          assignedTrail === slot && activeState.brightness > 0.002
+      }
     })
   })
 
