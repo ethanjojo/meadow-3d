@@ -5,15 +5,15 @@ import type { EnvironmentSnapshot } from './simulation'
 
 const WEATHER_SKY = new Color('#53616a')
 const WEATHER_HORIZON = new Color('#7f8582')
-const NIGHT_TOP = new Color('#071423')
+const NIGHT_TOP = new Color('#0a1a2c')
 const DAY_TOP = new Color('#286f9f')
-const NIGHT_HORIZON = new Color('#1b3041')
+const NIGHT_HORIZON = new Color('#22394c')
 const DAY_HORIZON = new Color('#9bbeb5')
 const SUNSET = new Color('#e7a46e')
 const LOW_SUN = new Color('#ffd09a')
 const DAY_SUN = new Color('#fff2cf')
 const MOON_LIGHT = new Color('#8ba8cf')
-const NIGHT_SKY_LIGHT = new Color('#7189a0')
+const NIGHT_SKY_LIGHT = new Color('#8298ae')
 const DAY_SKY_LIGHT = new Color('#b8d3df')
 
 export interface AtmosphereState {
@@ -168,11 +168,11 @@ export function getAtmosphere(
   state.sunElevation = sunElevation
   state.sunAzimuth = solarAngle
   state.sunIntensity = 0.05 + daylight * (0.65 + sunVisibility * 1.4)
-  state.moonIntensity = 0.035 + (1 - daylight) * moonVisibility * 0.32
+  state.moonIntensity = 0.05 + (1 - daylight) * moonVisibility * 0.46
   state.skyLightIntensity = clamp(
     0.38 + daylight * 0.32 - snapshot.weather.cloudCover * 0.08 -
       snapshot.weather.fog * 0.05,
-    0.24,
+    0.34,
     0.7,
   )
   state.starOpacity = starOpacity
@@ -192,9 +192,9 @@ export function getAtmosphere(
     0.04,
   )
   state.exposure = clamp(
-    0.6 + daylight * 0.48 - snapshot.weather.cloudCover * 0.1 -
+    0.64 + daylight * 0.46 - snapshot.weather.cloudCover * 0.1 -
       snapshot.weather.fog * 0.04 - snapshot.weather.storm * 0.08,
-    0.55,
+    0.62,
     1.15,
   )
   return state

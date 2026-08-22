@@ -1,3 +1,5 @@
+import { valueNoise } from './noise'
+
 export interface GrassLayout {
   offsets: Float32Array
   scales: Float32Array
@@ -16,9 +18,17 @@ export interface GrassLayerLayout extends GrassLayout {
 }
 
 export const GRASS_LAYER_RATIOS = {
-  foreground: 0.22,
+  foreground: 0.3,
   middle: 0.33,
-  horizon: 0.45,
+  horizon: 0.37,
+} as const satisfies Record<GrassLayerKind, number>
+
+export const GRASS_MEADOW_RADIUS = 47.5
+
+export const GRASS_LAYER_SEGMENTS = {
+  foreground: 5,
+  middle: 4,
+  horizon: 2,
 } as const satisfies Record<GrassLayerKind, number>
 
 export const GRASS_LAYER_PROFILES = {
@@ -49,14 +59,24 @@ export const GRASS_LAYER_PROFILES = {
 const LAYER_BANDS = {
   foreground: { near: 5, far: -4.5, nearHalfWidth: 1.2, farHalfWidth: 8.2 },
   middle: { near: -3.5, far: -16, nearHalfWidth: 7.2, farHalfWidth: 16 },
-  horizon: { near: -14, far: -34, nearHalfWidth: 13.5, farHalfWidth: 28 },
+  horizon: { near: -14, far: -46, nearHalfWidth: 13.5, farHalfWidth: 34 },
 } as const satisfies Record<
   GrassLayerKind,
   { near: number; far: number; nearHalfWidth: number; farHalfWidth: number }
 >
 
+const DEPTH_BIAS_EXPONENTS = {
+  foreground: 1.35,
+  middle: 1,
+  horizon: 1,
+} as const satisfies Record<GrassLayerKind, number>
+
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value))
+}
+
+function lerp(from: number, to: number, amount: number) {
+  return from + (to - from) * amount
 }
 
 function smoothstep(minimum: number, maximum: number, value: number) {
@@ -111,6 +131,36 @@ export function terrainHeight(x: number, z: number) {
   )
 }
 
+function samplePatchNoise(x: number, z: number) {
+  return clamp01(
+    valueNoise(x / 9 + 3.7, z / 9 + 1.3) * 0.62 +
+      valueNoise(x / 4.4 + 11.2, z / 4.4 + 7.8) * 0.38,
+  )
+}
+
+export const getGrassPatchNoise = samplePatchNoise
+
+interface BandPoint {
+  x: number
+  y: number
+  z: number
+}
+
+function sampleBandPoint(kind: GrassLayerKind, random: () => number): BandPoint {
+  const band = LAYER_BANDS[kind]
+  const depthBias = DEPTH_BIAS_EXPONENTS[kind]
+  const depthProgress = random() ** depthBias
+  const z = band.near + (band.far - band.near) * depthProgress
+  const halfWidth =
+    band.nearHalfWidth +
+    (band.farHalfWidth - band.nearHalfWidth) * depthProgress
+  const circleHalfWidth = Math.sqrt(
+    Math.max(0, GRASS_MEADOW_RADIUS * GRASS_MEADOW_RADIUS - z * z),
+  )
+  const x = (random() * 2 - 1) * Math.min(halfWidth, circleHalfWidth)
+  return { x, y: terrainHeight(x, z), z }
+}
+
 export function getGrassLayerBudgets(total: number) {
   const bladeCount = Math.max(0, Math.floor(total))
   const foreground = Math.floor(bladeCount * GRASS_LAYER_RATIOS.foreground)
@@ -129,7 +179,6 @@ export function createGrassLayerLayout(
   seed: number,
 ): GrassLayerLayout {
   const bladeCount = Math.max(0, Math.floor(count))
-  const band = LAYER_BANDS[kind]
   const profile = GRASS_LAYER_PROFILES[kind]
   const [minimumScale, maximumScale] = profile.scale
   const [minimumLean, maximumLean] = profile.lean
@@ -146,18 +195,22 @@ export function createGrassLayerLayout(
   const atlasCells = new Float32Array(bladeCount)
 
   for (let index = 0; index < bladeCount; index += 1) {
-    const depthProgress = random()
-    const z = band.near + (band.far - band.near) * depthProgress
-    const halfWidth =
-      band.nearHalfWidth +
-      (band.farHalfWidth - band.nearHalfWidth) * depthProgress
-    const x = (random() * 2 - 1) * halfWidth
+    const { x, y, z } = sampleBandPoint(kind, random)
     const offsetIndex = index * 3
 
     offsets[offsetIndex] = x
-    offsets[offsetIndex + 1] = terrainHeight(x, z)
+    offsets[offsetIndex + 1] = y
     offsets[offsetIndex + 2] = z
-    const scale = minimumScale + random() * (maximumScale - minimumScale)
+    const patchNoise = samplePatchNoise(x, z)
+    const randomScale =
+      minimumScale + random() * (maximumScale - minimumScale)
+    const scale = Math.min(
+      maximumScale,
+      Math.max(
+        minimumScale,
+        lerp(randomScale, minimumScale + (maximumScale - minimumScale) * patchNoise, 0.55),
+      ),
+    )
     const normalizedScale =
       (scale - minimumScale) / (maximumScale - minimumScale)
     const stiffnessRange = maximumStiffness - minimumStiffness
@@ -221,4 +274,38 @@ export function createGrassLayout(
   }
 
   return { offsets, scales, phases, stiffness, yaw }
+}
+
+export interface FlowerLayout {
+  offsets: Float32Array
+  scales: Float32Array
+  phases: Float32Array
+  yaws: Float32Array
+  colorVariation: Float32Array
+}
+
+export function createFlowerLayout(count: number, seed: number): FlowerLayout {
+  const flowerCount = Math.max(0, Math.floor(count))
+  const random = createMulberry32(seed)
+  const offsets = new Float32Array(flowerCount * 3)
+  const scales = new Float32Array(flowerCount)
+  const phases = new Float32Array(flowerCount)
+  const yaws = new Float32Array(flowerCount)
+  const colorVariation = new Float32Array(flowerCount)
+
+  for (let index = 0; index < flowerCount; index += 1) {
+    const { x, y, z } = sampleBandPoint('foreground', random)
+    const offsetIndex = index * 3
+
+    offsets[offsetIndex] = x
+    offsets[offsetIndex + 1] = y
+    offsets[offsetIndex + 2] = z
+    const patchNoise = samplePatchNoise(x, z)
+    scales[index] = (0.72 + random() * 0.56) * (0.7 + patchNoise * 0.6)
+    phases[index] = random() * Math.PI * 2
+    yaws[index] = random() * Math.PI * 2
+    colorVariation[index] = random()
+  }
+
+  return { offsets, scales, phases, yaws, colorVariation }
 }

@@ -112,7 +112,7 @@ export function CelestialBodies({
         getBloomEmissionScale(bloomEnabled, 'sun'),
       ),
       moonDisc: new MeshBasicMaterial({
-        color: '#dbe8ff',
+        color: '#e8f2ff',
         transparent: true,
         opacity: 0,
         depthTest: true,
@@ -121,7 +121,7 @@ export function CelestialBodies({
         toneMapped: false,
       }),
       moonHalo: createHaloMaterial(
-        '#9cbce8',
+        '#a9c6f0',
         getBloomEmissionScale(bloomEnabled, 'moon'),
       ),
     }),
@@ -163,9 +163,9 @@ export function CelestialBodies({
     materials.sunHalo.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunHalo * 0.62
     materials.moonDisc.opacity =
-      presentation.moon.opacity * atmosphere.moonVisibility * 0.92
+      presentation.moon.opacity * atmosphere.moonVisibility
     materials.moonHalo.uniforms.uOpacity.value =
-      presentation.moon.opacity * atmosphere.moonHalo * 0.42
+      presentation.moon.opacity * atmosphere.moonHalo * 0.58
   })
 
   return (
@@ -177,7 +177,7 @@ export function CelestialBodies({
         <circleGeometry args={[1.75, 40]} />
       </mesh>
       <mesh ref={moonHaloRef} material={materials.moonHalo} frustumCulled={false}>
-        <circleGeometry args={[3.5, 40]} />
+        <circleGeometry args={[4.3, 40]} />
       </mesh>
       <mesh ref={moonDiscRef} material={materials.moonDisc} frustumCulled={false}>
         <circleGeometry args={[1.1, 40]} />

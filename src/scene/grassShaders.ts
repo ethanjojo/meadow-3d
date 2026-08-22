@@ -2,6 +2,36 @@ export function getGrassShaderDefines(detailedLighting: boolean) {
   return detailedLighting ? {} : { SIMPLE_GRASS_LIGHTING: 1 }
 }
 
+export const cloudShadowChunk = /* glsl */ `
+  float meadowHash(vec2 point) {
+    return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float meadowNoise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 local = fract(point);
+    local = local * local * (3.0 - 2.0 * local);
+    float cornerA = meadowHash(cell);
+    float cornerB = meadowHash(cell + vec2(1.0, 0.0));
+    float cornerC = meadowHash(cell + vec2(0.0, 1.0));
+    float cornerD = meadowHash(cell + vec2(1.0, 1.0));
+    return mix(
+      mix(cornerA, cornerB, local.x),
+      mix(cornerC, cornerD, local.x),
+      local.y
+    );
+  }
+
+  float cloudShadowFactor(vec2 worldXZ, vec2 drift, float cover) {
+    vec2 sampled = worldXZ * 0.055 + drift;
+    float value =
+      meadowNoise(sampled) * 0.62 +
+      meadowNoise(sampled * 2.7 + vec2(13.7, -8.1)) * 0.38;
+    float threshold = 0.86 - cover * 0.5;
+    return smoothstep(threshold, threshold + 0.24, value);
+  }
+`
+
 export const grassVertexShader = /* glsl */ `
   attribute vec3 instanceOffset;
   attribute float instanceScale;
@@ -26,6 +56,7 @@ export const grassVertexShader = /* glsl */ `
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
+  varying vec2 vWorldXZ;
 
   mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -69,11 +100,11 @@ export const grassVertexShader = /* glsl */ `
     float flutter =
       sin(uTime * 5.2 + instancePhase * 2.3 + flowPosition * 0.37) *
       uFlutterStrength *
-      uWindStrength *
+      (0.16 + uWindStrength * 0.84) *
       (1.0 - instanceStiffness);
     targetAngle = clamp(targetAngle + flutter, -uBendLimit, uBendLimit);
     float curvatureAngle = targetAngle * rootInfluence * clearanceWind;
-    vec2 bendOffset = windDirection * sin(curvatureAngle) * heightRatio;
+    vec2 bendOffset = windDirection * sin(curvatureAngle) * heightRatio * heightRatio;
 
     localPosition.xz += bendOffset;
     localPosition.y *= max(0.72, cos(curvatureAngle));
@@ -82,6 +113,7 @@ export const grassVertexShader = /* glsl */ `
     vec4 worldPosition = modelMatrix * vec4(localPosition + instanceOffset, 1.0);
     vec4 viewPosition = viewMatrix * worldPosition;
     gl_Position = projectionMatrix * viewPosition;
+    vWorldXZ = worldPosition.xz;
 
     vHeight = heightRatio;
     vVariation = instanceColorVariation;
@@ -126,12 +158,19 @@ export const grassFragmentShader = /* glsl */ `
   uniform sampler2D uGrassSurfaceAtlas;
   uniform float uUseAtlas;
   uniform float uUseTransmission;
+  uniform float uShadowCover;
+  uniform float uShadowStrength;
+  uniform float uTime;
+  uniform vec2 uWindDirection;
 
   varying float vHeight;
   varying float vVariation;
   varying float vViewDepth;
   varying vec3 vBladeNormal;
   varying vec2 vAtlasUv;
+  varying vec2 vWorldXZ;
+
+  ${cloudShadowChunk}
 
   void main() {
     vec4 atlasColor = vec4(1.0);
@@ -156,6 +195,10 @@ export const grassFragmentShader = /* glsl */ `
     #endif
     grassColor *= mix(0.86, 1.1, vVariation);
 
+    float distanceSoften = smoothstep(14.0, 32.0, vViewDepth);
+    float colorTone = dot(grassColor, vec3(0.2126, 0.7152, 0.0722));
+    grassColor = mix(grassColor, vec3(colorTone), distanceSoften * 0.5);
+
     float lowerBlade = 1.0 - smoothstep(0.12, 0.82, vHeight);
     float wetDarkening = uWetness * (0.16 + lowerBlade * 0.28);
     grassColor *= 1.0 - wetDarkening;
@@ -174,7 +217,13 @@ export const grassFragmentShader = /* glsl */ `
     vec3 light =
       hemisphereFill +
       uSunColor * sunFacing * uSunIntensity * 0.72 +
-      uMoonColor * moonFacing * uMoonIntensity * 0.48;
+      uMoonColor * moonFacing * uMoonIntensity * 0.6;
+    float cloudShade = cloudShadowFactor(
+      vWorldXZ,
+      uWindDirection * uTime * 0.02,
+      uShadowCover
+    );
+    light *= 1.0 - cloudShade * uShadowStrength * 0.42;
     vec3 litColor = grassColor * light;
     #ifndef SIMPLE_GRASS_LIGHTING
     float roughness = mix(1.0, surfaceData.r, uUseAtlas);
@@ -204,6 +253,7 @@ export const grassFragmentShader = /* glsl */ `
     float fogAmount = 1.0 - exp(
       -bladeFogDensity * bladeFogDensity * vViewDepth * vViewDepth
     );
+    fogAmount += distanceSoften * (1.0 - fogAmount) * 0.3;
     fogAmount = mix(fogAmount, 1.0, 1.0 - uLayerFade);
     gl_FragColor = vec4(mix(litColor, uFogColor, fogAmount), 1.0);
     #include <tonemapping_fragment>

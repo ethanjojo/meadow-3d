@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   ClampToEdgeWrapping,
   NoColorSpace,
+  RepeatWrapping,
   SRGBColorSpace,
   Texture,
   TextureLoader,
 } from 'three'
 import {
   createGrassTextureFallbacks,
+  createGroundDetailTexture,
   loadGrassTextures,
   type GrassTextureSet,
 } from '../../src/scene/grassTextures'
@@ -98,5 +100,35 @@ describe('grass texture fallbacks', () => {
     cleanup()
     fallbacks.color.dispose()
     fallbacks.surface.dispose()
+  })
+})
+
+describe('ground detail texture', () => {
+  it('builds a tiling mottled map with clamped anisotropy', () => {
+    const texture = createGroundDetailTexture(64)
+    const { data, width, height } = texture.image as {
+      data: Uint8Array
+      width: number
+      height: number
+    }
+
+    expect(width).toBe(128)
+    expect(height).toBe(128)
+    expect(data).toHaveLength(width * height * 4)
+    expect(texture.wrapS).toBe(RepeatWrapping)
+    expect(texture.wrapT).toBe(RepeatWrapping)
+    expect(texture.repeat.x).toBeGreaterThan(1)
+    expect(texture.colorSpace).toBe(SRGBColorSpace)
+    expect(texture.anisotropy).toBe(8)
+
+    let minimum = 255
+    let maximum = 0
+    for (let index = 0; index < data.length; index += 4) {
+      minimum = Math.min(minimum, data[index + 1])
+      maximum = Math.max(maximum, data[index + 1])
+    }
+    expect(maximum).toBeGreaterThan(minimum)
+
+    texture.dispose()
   })
 })

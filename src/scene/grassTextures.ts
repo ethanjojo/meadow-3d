@@ -3,11 +3,13 @@ import {
   DataTexture,
   NoColorSpace,
   RGBAFormat,
+  RepeatWrapping,
   SRGBColorSpace,
   Texture,
   TextureLoader,
   UnsignedByteType,
 } from 'three'
+import { valueNoise } from '../core/noise'
 import colorAtlasUrl from '../assets/grass-blades-color.png'
 import surfaceAtlasUrl from '../assets/grass-blades-surface.png'
 
@@ -48,6 +50,36 @@ export function createGrassTextureFallbacks(): GrassTextureSet {
   configureTexture(color, SRGBColorSpace, 1)
   configureTexture(surface, NoColorSpace, 1)
   return { color, surface, detailed: false }
+}
+
+export function createGroundDetailTexture(maximumAnisotropy = 1) {
+  const size = 128
+  const data = new Uint8Array(size * size * 4)
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size
+      const v = y / size
+      const coarse = valueNoise(u, v, 6)
+      const fine = valueNoise(u, v, 18)
+      const tone = Math.min(1, Math.max(0, coarse * 0.68 + fine * 0.32))
+      const brightness = 176 + tone * 79
+      const pixelIndex = (y * size + x) * 4
+      data[pixelIndex] = Math.min(255, brightness * 1.03)
+      data[pixelIndex + 1] = brightness
+      data[pixelIndex + 2] = Math.min(255, brightness * 0.94)
+      data[pixelIndex + 3] = 255
+    }
+  }
+
+  const texture = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType)
+  texture.wrapS = RepeatWrapping
+  texture.wrapT = RepeatWrapping
+  texture.repeat.set(14, 14)
+  texture.colorSpace = SRGBColorSpace
+  texture.anisotropy = Math.min(8, Math.max(1, maximumAnisotropy))
+  texture.needsUpdate = true
+  return texture
 }
 
 export function loadGrassTextures(

@@ -31,10 +31,13 @@ const cloudVertexShader = /* glsl */ `
 
 const cloudFragmentShader = /* glsl */ `
   uniform vec3 uColor;
+  uniform vec3 uTint;
+  uniform float uTintStrength;
   uniform float uCloudCover;
   uniform float uStorm;
   uniform float uTime;
   uniform vec2 uWind;
+  uniform vec2 uReliefDir;
   uniform float uLayer;
   varying vec2 vUv;
 
@@ -49,17 +52,42 @@ const cloudFragmentShader = /* glsl */ `
     return mix(mix(a, b, local.x), mix(c, d, local.x), local.y);
   }
 
+  float fbm(vec2 point) {
+    float value = noise(point) * 0.54;
+    point = point * 2.17 + vec2(19.7, -8.3);
+    value += noise(point) * 0.28;
+    point = point * 2.29 + vec2(-4.1, 27.9);
+    value += noise(point) * 0.18;
+    return value;
+  }
+
   void main() {
     vec2 drift = normalize(uWind + vec2(0.0001)) * uTime;
-    float broad = noise(vUv * (3.1 + uLayer * 0.35) + drift);
-    float detail = noise(vUv * (8.4 + uLayer * 0.7) - drift * 1.7);
-    float density = broad * 0.7 + detail * 0.3;
-    float threshold = 0.82 - uCloudCover * 0.56;
-    float cloud = smoothstep(threshold, threshold + 0.22, density);
+    vec2 warp = vec2(
+      noise(vUv * 2.6 + drift * 0.6),
+      noise(vUv * 2.6 - vec2(31.2) - drift * 0.5)
+    ) - 0.5;
+    vec2 field = vUv * (3.1 + uLayer * 0.35) + warp * 0.55;
+
+    float broad = fbm(field + drift);
+    float detail = fbm(field * 2.4 - drift * 1.7);
+    float density = broad * 0.68 + detail * 0.32;
+    float threshold = 0.80 - uCloudCover * 0.56;
+    float cloud = smoothstep(threshold, threshold + 0.2, density);
+    cloud = pow(cloud, 1.22);
+
+    float neighbor = fbm(field + drift + uReliefDir * 0.11);
+    float relief = clamp((density - neighbor) * 2.8, -1.0, 1.0);
+
     vec2 edgeDistance = min(vUv, 1.0 - vUv);
     float edge = smoothstep(0.0, 0.16, min(edgeDistance.x, edgeDistance.y));
-    float alpha = cloud * edge * (0.18 + uCloudCover * 0.28 + uStorm * 0.12);
-    gl_FragColor = vec4(mix(uColor, vec3(0.22, 0.25, 0.29), uStorm * 0.58), alpha);
+    float alpha = cloud * edge * (0.16 + uCloudCover * 0.34 + uStorm * 0.14);
+
+    vec3 base = mix(uColor, vec3(0.2, 0.23, 0.27), uStorm * 0.62);
+    base *= 0.86 + cloud * 0.1;
+    vec3 lit = base * (1.0 + relief * 0.28) +
+      uTint * max(relief, 0.0) * uTintStrength * 0.85;
+    gl_FragColor = vec4(lit, alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -75,10 +103,13 @@ function createCloudMaterial(layer: number) {
     side: DoubleSide,
     uniforms: {
       uColor: { value: new Color('#e4e9e5') },
+      uTint: { value: new Color('#ffd9a0') },
+      uTintStrength: { value: 0 },
       uCloudCover: { value: 0 },
       uStorm: { value: 0 },
       uTime: { value: 0 },
       uWind: { value: new Vector2(0.86, 0.5) },
+      uReliefDir: { value: new Vector2(-0.55, 0.83).normalize() },
       uLayer: { value: layer },
     },
   })
@@ -121,6 +152,16 @@ export function CloudLayer({
       material.uniforms.uStorm.value = snapshot.weather.storm
       material.uniforms.uTime.value = cloudPhaseRef.current
       material.uniforms.uWind.value.set(...snapshot.weather.windDirection)
+      material.uniforms.uTint.value
+        .copy(atmosphere.sunColor)
+        .lerp(atmosphere.moonColor, 0.55)
+      material.uniforms.uTintStrength.value =
+        Math.min(
+          1,
+          (atmosphere.sunIntensity + atmosphere.moonIntensity) / 1.4,
+        ) *
+        (1 - snapshot.weather.storm * 0.8) *
+        (1 - snapshot.weather.cloudCover * 0.35)
     }
   })
 

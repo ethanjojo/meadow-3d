@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   GRASS_LAYER_PROFILES,
+  createFlowerLayout,
   createGrassLayerLayout,
   createGrassLayout,
   getGrassBendLimit,
   getGrassClearance,
   getGrassLayerBudgets,
+  getGrassPatchNoise,
   getGrassRootInfluence,
   grassLayerUsesAtlas,
   terrainHeight,
@@ -15,6 +17,7 @@ import {
   getGrassShaderDefines,
   grassFragmentShader,
   grassVertexShader,
+  cloudShadowChunk,
 } from '../../src/scene/grassShaders'
 
 describe('createGrassLayout', () => {
@@ -179,6 +182,16 @@ describe('layered grass layout', () => {
     expect(grassFragmentShader).toContain('uUseTransmission')
   })
 
+  it('darkens blades under drifting cloud shadows', () => {
+    expect(cloudShadowChunk).toContain('float cloudShadowFactor')
+    expect(grassVertexShader).toContain('vWorldXZ = worldPosition.xz')
+    expect(grassFragmentShader).toContain('uniform float uShadowCover')
+    expect(grassFragmentShader).toContain('uniform float uShadowStrength')
+    expect(grassFragmentShader).toContain(
+      'cloudShadowFactor(\n      vWorldXZ,\n      uWindDirection * uTime * 0.02,\n      uShadowCover\n    )',
+    )
+  })
+
   it('compiles a cheaper low-tier fragment path without removing weather light', () => {
     expect(getGrassShaderDefines(false)).toEqual({ SIMPLE_GRASS_LIGHTING: 1 })
     expect(getGrassShaderDefines(true)).toEqual({})
@@ -228,7 +241,7 @@ describe('layered grass layout', () => {
   ]>([
     ['foreground', [-4.5, 5]],
     ['middle', [-16, -3.5]],
-    ['horizon', [-34, -14]],
+    ['horizon', [-46, -14]],
   ])('keeps %s roots inside its visible depth band', (kind, [minimum, maximum]) => {
     const layout = createGrassLayerLayout(512, kind, 17)
 
@@ -243,13 +256,85 @@ describe('layered grass layout', () => {
     }
   })
 
+  it('biases foreground sampling toward the camera', () => {
+    const layout = createGrassLayerLayout(4_096, 'foreground', 17)
+    let nearShare = 0
+    let total = 0
+
+    for (let index = 0; index < layout.offsets.length; index += 3) {
+      const z = layout.offsets[index + 2]
+      if (z >= 5 - 9.5 * 0.33) nearShare += 1
+      total += 1
+    }
+
+    expect(nearShare / total).toBeGreaterThan(0.38)
+  })
+
+  it('creates patchy height variation instead of uniform noise', () => {
+    expect(getGrassPatchNoise(1.2, -2.4)).toBe(getGrassPatchNoise(1.2, -2.4))
+    expect(Math.abs(
+      getGrassPatchNoise(1.2, -2.4) - getGrassPatchNoise(1.5, -2.1),
+    )).toBeLessThan(0.2)
+
+    let differing = 0
+    for (let index = 0; index < 12; index += 1) {
+      const base = getGrassPatchNoise(index * 6.5, index * 4.1)
+      const distant = getGrassPatchNoise(index * 6.5 + 13, index * 4.1 + 9)
+      if (Math.abs(base - distant) > 0.08) differing += 1
+    }
+    expect(differing).toBeGreaterThan(5)
+  })
+
+  it('scatters flowers only inside the foreground band and meadow circle', () => {
+    const first = createFlowerLayout(256, 91)
+    const second = createFlowerLayout(256, 91)
+
+    expect(Array.from(first.offsets)).toEqual(Array.from(second.offsets))
+    expect(first.offsets).toHaveLength(256 * 3)
+
+    for (let index = 0; index < first.scales.length; index += 1) {
+      const x = first.offsets[index * 3]
+      const y = first.offsets[index * 3 + 1]
+      const z = first.offsets[index * 3 + 2]
+
+      expect(z).toBeGreaterThanOrEqual(-4.5)
+      expect(z).toBeLessThanOrEqual(5)
+      expect(y).toBeCloseTo(terrainHeight(x, z), 5)
+      expect(Math.hypot(x, z)).toBeLessThanOrEqual(47.55)
+      expect(first.scales[index]).toBeGreaterThan(0.35)
+      expect(first.scales[index]).toBeLessThan(1.8)
+      expect(first.colorVariation[index]).toBeGreaterThanOrEqual(0)
+      expect(first.colorVariation[index]).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('fills the horizon band laterally while staying inside the meadow circle', () => {
+    const layout = createGrassLayerLayout(8_192, 'horizon', 91)
+    let widest = 0
+
+    for (let index = 0; index < layout.offsets.length; index += 3) {
+      const x = layout.offsets[index]
+      const z = layout.offsets[index + 2]
+      const depthProgress = (-14 - z) / 32
+      const trapezoidHalfWidth = 13.5 + 20.5 * depthProgress
+      const circleHalfWidth = Math.sqrt(Math.max(0, 47.5 ** 2 - z * z))
+
+      expect(Math.hypot(x, z)).toBeLessThanOrEqual(47.55)
+      expect(Math.abs(x)).toBeLessThanOrEqual(
+        Math.min(trapezoidHalfWidth, circleHalfWidth) + 1e-4,
+      )
+      widest = Math.max(widest, Math.abs(x))
+    }
+
+    expect(widest).toBeGreaterThan(24)
+  })
+
   it.each<[
     GrassLayerKind,
     readonly [near: number, far: number],
   ]>([
     ['foreground', [5, -4.5]],
     ['middle', [-3.5, -16]],
-    ['horizon', [-14, -34]],
   ])('expands the %s horizontal envelope with depth', (kind, [near, far]) => {
     const layout = createGrassLayerLayout(4_096, kind, 91)
     let nearEnvelope = 0

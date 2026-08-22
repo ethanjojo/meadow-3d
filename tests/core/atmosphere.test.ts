@@ -48,6 +48,23 @@ describe('getAtmosphere', () => {
     }
   })
 
+  it('keeps clear nights readable with a visible moonlight floor', () => {
+    const midnight = sampleAtDayPhase(0, 'clear')
+    const dusk = sampleAtDayPhase(0.72, 'clear')
+
+    expect(midnight.skyLightIntensity).toBeGreaterThanOrEqual(0.34)
+    expect(midnight.moonIntensity).toBeGreaterThan(0.3)
+    expect(midnight.exposure).toBeGreaterThanOrEqual(0.62)
+
+    for (const phase of [midnight, dusk]) {
+      expect(phase.skyLightIntensity).toBeGreaterThanOrEqual(0.34)
+      expect(phase.exposure).toBeGreaterThanOrEqual(0.62)
+    }
+
+    const noon = sampleAtDayPhase(0.5, 'clear')
+    expect(noon.sunIntensity).toBeGreaterThan(midnight.moonIntensity * 2)
+  })
+
   it('uses weather cover to dim stars and celestial halos coherently', () => {
     const clearNight = sampleAtDayPhase(0, 'clear')
     const foggyNight = sampleAtDayPhase(0, 'fog')

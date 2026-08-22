@@ -20,6 +20,7 @@ import {
   createGrassLayerLayout,
   getGrassBendLimit,
   getGrassLayerBudgets,
+  GRASS_LAYER_SEGMENTS,
   grassLayerUsesAtlas,
   terrainHeight,
   type GrassLayerKind,
@@ -29,13 +30,16 @@ import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
+import { Flowers } from './Flowers'
 import {
+  cloudShadowChunk,
   getGrassShaderDefines,
   grassFragmentShader,
   grassVertexShader,
 } from './grassShaders'
 import {
   createGrassTextureFallbacks,
+  createGroundDetailTexture,
   loadGrassTextures,
   type GrassTextureSet,
 } from './grassTextures'
@@ -70,7 +74,7 @@ function createBladeGeometry(
   kind: GrassLayerKind,
   seed: number,
 ) {
-  const segmentCount = 5
+  const segmentCount = GRASS_LAYER_SEGMENTS[kind]
   const positions: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
@@ -221,6 +225,8 @@ function createGrassMaterial(
       uGrassSurfaceAtlas: { value: surfaceAtlas },
       uUseAtlas: { value: 0 },
       uUseTransmission: { value: useTransmission ? 1 : 0 },
+      uShadowCover: { value: 0 },
+      uShadowStrength: { value: 0 },
     },
   })
 }
@@ -258,6 +264,23 @@ export function Meadow({
     quality.grassTransmission,
   ])
   const groundGeometry = useMemo(createGroundGeometry, [])
+  const groundTexture = useMemo(
+    () => createGroundDetailTexture(gl.capabilities.getMaxAnisotropy()),
+    [gl],
+  )
+  const groundRimUniform = useMemo(
+    () => ({ value: new Color('#aab8a6') }),
+    [],
+  )
+  const groundCloudUniforms = useMemo(
+    () => ({
+      time: { value: 0 },
+      wind: { value: new Vector2(1, 0) },
+      cover: { value: 0 },
+      strength: { value: 0 },
+    }),
+    [],
+  )
 
   useEffect(
     () => () => {
@@ -269,6 +292,7 @@ export function Meadow({
     [layers],
   )
   useEffect(() => () => groundGeometry.dispose(), [groundGeometry])
+  useEffect(() => () => groundTexture.dispose(), [groundTexture])
   useEffect(
     () => () => {
       fallbackTextures.color.dispose()
@@ -339,6 +363,22 @@ export function Meadow({
       syncGrassAtmosphereUniforms(uniforms, atmosphere)
     }
 
+    groundRimUniform.value.copy(atmosphere.fogColor)
+
+    const shadowCover = snapshot.weather.cloudCover
+    const shadowStrength =
+      Math.min(1, atmosphere.sunIntensity / 1.2) * shadowCover ** 0.85
+    for (const layer of layers) {
+      layer.material.uniforms.uShadowCover.value = shadowCover
+      layer.material.uniforms.uShadowStrength.value = shadowStrength
+    }
+    groundCloudUniforms.cover.value = shadowCover
+    groundCloudUniforms.strength.value = shadowStrength
+    groundCloudUniforms.time.value = snapshot.elapsed * 0.02
+    groundCloudUniforms.wind.value
+      .set(...snapshot.weather.windDirection)
+      .normalize()
+
     if (terrainMaterialRef.current) {
       terrainMaterialRef.current.color
         .copy(season.groundColor)
@@ -347,6 +387,8 @@ export function Meadow({
       terrainMaterialRef.current.emissive
         .copy(terrainMaterialRef.current.color)
         .multiplyScalar(0.26)
+      terrainMaterialRef.current.emissiveIntensity =
+        0.55 + (1 - Math.min(1, atmosphere.sunIntensity / 1.3)) * 0.35
       terrainMaterialRef.current.roughness =
         0.95 - season.frost * 0.18 - wetness * 0.08
     }
@@ -362,10 +404,59 @@ export function Meadow({
         <primitive object={groundGeometry} attach="geometry" />
         <meshStandardMaterial
           ref={terrainMaterialRef}
+          map={groundTexture}
           color="#40552b"
           emissive="#132017"
           emissiveIntensity={0.65}
           roughness={0.95}
+          onBeforeCompile={(shader) => {
+            shader.uniforms.uRimFadeColor = groundRimUniform
+            shader.uniforms.uShadowCover = groundCloudUniforms.cover
+            shader.uniforms.uShadowStrength = groundCloudUniforms.strength
+            shader.uniforms.uShadowTime = groundCloudUniforms.time
+            shader.uniforms.uShadowWind = groundCloudUniforms.wind
+            shader.vertexShader = shader.vertexShader
+              .replace(
+                '#include <common>',
+                '#include <common>\nvarying float vRimFade;\nvarying vec2 vGroundWorldXZ;',
+              )
+              .replace(
+                '#include <begin_vertex>',
+                `#include <begin_vertex>
+    vec4 groundWorldPosition = modelMatrix * vec4(position, 1.0);
+    vRimFade = smoothstep(34.0, 47.0, length(groundWorldPosition.xz));
+    vGroundWorldXZ = groundWorldPosition.xz;`,
+              )
+            shader.fragmentShader = shader.fragmentShader
+              .replace(
+                '#include <common>',
+                `#include <common>
+varying float vRimFade;
+varying vec2 vGroundWorldXZ;
+uniform vec3 uRimFadeColor;
+uniform float uShadowCover;
+uniform float uShadowStrength;
+uniform float uShadowTime;
+uniform vec2 uShadowWind;
+${cloudShadowChunk}`,
+              )
+              .replace(
+                '#include <map_fragment>',
+                `#include <map_fragment>
+    diffuseColor.rgb = mix(diffuseColor.rgb, uRimFadeColor, vRimFade);
+    float groundCloudShade = cloudShadowFactor(
+      vGroundWorldXZ,
+      uShadowWind * uShadowTime,
+      uShadowCover
+    );
+    diffuseColor.rgb *= 1.0 - groundCloudShade * uShadowStrength * 0.5;`,
+              )
+              .replace(
+                '#include <emissivemap_fragment>',
+                `#include <emissivemap_fragment>
+    totalEmissiveRadiance *= 1.0 - vRimFade * 0.85;`,
+              )
+          }}
         />
       </mesh>
       {layers.map((layer) => (
@@ -378,6 +469,13 @@ export function Meadow({
           frustumCulled={false}
         />
       ))}
+      <Flowers
+        count={Math.min(720, Math.round(quality.grassBlades * 0.008))}
+        snapshotRef={snapshotRef}
+        seasonRef={seasonRef}
+        atmosphereRef={atmosphereRef}
+        effectsRef={effectsRef}
+      />
     </group>
   )
 }
