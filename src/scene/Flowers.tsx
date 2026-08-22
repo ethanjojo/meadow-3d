@@ -59,11 +59,17 @@ const FLOWER_VERTEX_SHADER = /* glsl */ `
     vec2 windDirection = normalize(uWindDirection + vec2(0.0001));
     float bendCurve = pow(clamp(uv.y, 0.0, 1.0), 1.5);
     float snowShrink = max(0.08, 1.0 - uSnowCoverage * 0.92);
+    float cameraClearance = smoothstep(
+      1.2,
+      6.0,
+      distance(cameraPosition.xz, instanceOffset.xz)
+    );
 
     vec3 localPosition = position;
     localPosition.xz *= instanceScale * snowShrink;
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
-    localPosition.y *= instanceScale * snowShrink;
+    localPosition.y *=
+      instanceScale * snowShrink * mix(0.08, 1.0, cameraClearance) * 0.42;
     localPosition.xz += windDirection * sin(swayAngle) * bendCurve;
 
     vec4 worldPosition = modelMatrix * vec4(localPosition + instanceOffset, 1.0);
@@ -114,12 +120,21 @@ const FLOWER_FRAGMENT_SHADER = /* glsl */ `
 
   void main() {
     vec2 headOffset = vec2(
-      (vFlowerUv.x - 0.5) * 0.18,
+      (vFlowerUv.x - 0.5) * 0.1,
       vFlowerUv.y - 0.78
     );
     float headDist = length(headOffset);
-    float petalMask = 1.0 - smoothstep(0.048, 0.056, headDist);
-    float centerMask = 1.0 - smoothstep(0.018, 0.026, headDist);
+    float headPixel = fwidth(headDist);
+    float petalMask = 1.0 - smoothstep(0.03, 0.038 + headPixel, headDist);
+    float centerMask = 1.0 - smoothstep(0.011, 0.017, headDist);
+
+    float stemDistance = abs(vFlowerUv.x - 0.5);
+    float stemPixel = fwidth(stemDistance);
+    float stemMask =
+      (1.0 - smoothstep(0.05 - stemPixel, 0.05 + stemPixel, stemDistance)) *
+      (1.0 - smoothstep(0.72, 0.78, vFlowerUv.y));
+
+    if (max(petalMask, stemMask) < 0.5) discard;
 
     vec3 stemColor = uGrassBase * mix(0.5, 0.92, vFlowerUv.y);
     vec3 petalColor = mix(
@@ -169,7 +184,7 @@ const FLOWER_FRAGMENT_SHADER = /* glsl */ `
 `
 
 function createFlowerGeometry(count: number, seed: number) {
-  const halfWidth = 0.09
+  const halfWidth = 0.05
   const positions = [
     -halfWidth, 0, 0,
     halfWidth, 0, 0,
