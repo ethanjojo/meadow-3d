@@ -76,6 +76,19 @@ describe('recorded farm audio lifecycle', () => {
     farm.dispose()
   })
 
+  it('does not schedule ambience after muting during loading even when a preview keeps the context running', async () => {
+    const { farm, fetchSound } = setup()
+    let complete!: () => void
+    const loading = new Promise<void>(resolve => { complete = resolve })
+    fetchSound.mockImplementation(async () => { await loading; return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) } })
+    const start = farm.start()
+    farm.suspend()
+    complete()
+    await start
+    expect(vi.getTimerCount()).toBe(0)
+    farm.dispose()
+  })
+
   it('omits muted animals and resumes only the enabled animal', async () => {
     const { farm, source } = setup()
     const muted = Object.fromEntries(FARM_CALLS.map(call => [call.id, 0]))

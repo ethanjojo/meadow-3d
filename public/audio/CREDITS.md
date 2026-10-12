@@ -39,6 +39,15 @@ excerpt.
 | duck-real.wav | Jonathon Jongsma | [Mallard XC62258](https://commons.wikimedia.org/wiki/File:Anas_platyrhynchos_-_Mallard_-_XC62258.ogg), [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) | 0–2.75 s |
 | rooster.wav | Filo gèn' | [Rooster crowing](https://commons.wikimedia.org/wiki/File:Rooster_crowing.ogg), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | 0.90–2.71 s |
 
+## Thunder recordings
+
+- **thunder-close.wav**: [Thunder #2](https://bigsoundbank.com/thunder-2-s3113.html), Joseph Sardin & Axeline T., CC0; source region 1.00–4.73 s.
+- **thunder-distant.wav**: [Thunder #3](https://bigsoundbank.com/thunder-3-s3114.html), Joseph Sardin & Axeline T., CC0; source region 0.58–10.05 s.
+
+Both are single thunderclaps without rain, downmixed to mono 24 kHz / 16-bit PCM
+and peak-normalized to 0.25. Playback retains original pitch/speed and applies
+distance filtering, placement and delayed onset from the visible storm event.
+
 ## Bird recordings
 
 The four files under `birds/` are real field recordings from Wikimedia Commons.

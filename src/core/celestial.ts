@@ -295,23 +295,26 @@ export function getShootingStarState(
 ): ShootingStarState {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   const safeSlot = Math.max(0, Math.floor(Number.isFinite(slot) ? slot : 0))
-  const cycle = 82.5
+  const cycle = 95
   const window = Math.floor(safeElapsed / cycle)
   const windowTime = safeElapsed - window * cycle
   const eventSeed = (Math.floor(seed) || 0) + window * 7_919
-  const eventStart = hash(eventSeed) * 37.5
-  const duration = 1.2 + hash(eventSeed + 1) * 0.8
-  const rawProgress = (windowTime - eventStart) / duration
-  const assignedSlot = window % 3
+  const eventStart = 8 + hash(eventSeed) * 43
+  const duration = .7 + hash(eventSeed + 1) * .65
+  const paired = hash(eventSeed + 9) > .9 && safeSlot % 3 === (window + 1) % 3
+  const offset = paired ? 3.2 + hash(eventSeed + 10) * 1.6 : 0
+  const rawProgress = (windowTime - eventStart - offset) / duration
+  const assignedSlot = paired ? (window + 1) % 3 : window % 3
   const active =
-    safeSlot % 3 === assignedSlot && rawProgress >= 0 && rawProgress <= 1
+    safeSlot % 3 === assignedSlot && rawProgress >= 0 && rawProgress <= 1.25
   const progress = clamp01(rawProgress)
-  const startX = -0.72 + hash(eventSeed + 2) * 1.25
+  const rightward = hash(eventSeed + 8) > .5
+  const startX = rightward ? -.72 + hash(eventSeed + 2) * .8 : .72 - hash(eventSeed + 2) * .8
   const startY = 0.38 + hash(eventSeed + 3) * 0.48
   const startZ = -0.65 + hash(eventSeed + 4) * 0.35
-  const travelX = 0.28 + hash(eventSeed + 5) * 0.34
+  const travelX = (0.28 + hash(eventSeed + 5) * 0.34) * (rightward ? 1 : -1)
   const travelY = -(0.18 + hash(eventSeed + 6) * 0.25)
-  const fade = active ? Math.sin(progress * Math.PI) : 0
+  const fade = active ? Math.min(1, rawProgress * 8) * (1 - smoothstep(.75, 1.25, rawProgress)) : 0
 
   return {
     active,

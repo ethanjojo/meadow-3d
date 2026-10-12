@@ -8,7 +8,11 @@ import {
   DEFAULT_SIMULATION_SETTINGS,
 } from '../../src/core/simulation'
 
+import { DEFAULT_SCENE_SETTINGS } from '../../src/core/sceneSettings'
+
 const audioProps = {
+  sceneSettings: DEFAULT_SCENE_SETTINGS,
+  onSceneChange: () => undefined,
   audioSettings: DEFAULT_AUDIO_SETTINGS,
   soundEnabled: false,
   onAudioChange: () => undefined,

@@ -1,4 +1,4 @@
-import { VolumeSlider } from './VolumeSlider'
+import { RangeSlider } from './RangeSlider'
 import { useRef } from 'react'
 
 interface SoundToggleProps {
@@ -49,7 +49,7 @@ export function SoundToggle({ enabled, onChange, volume, onVolumeChange }: Sound
         pointerFocusRef.current = false
       }}>
       <div className="sound-volume-controls">
-        <VolumeSlider label="Master volume" value={enabled ? volume : 0} onChange={onVolumeChange} vertical />
+        <RangeSlider label="Master volume" value={enabled ? volume : 0} onChange={onVolumeChange} vertical />
       </div>
       <button
         className="sound-toggle"

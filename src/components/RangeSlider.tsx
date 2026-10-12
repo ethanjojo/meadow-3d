@@ -1,13 +1,13 @@
 import { useId } from 'react'
 
-export function VolumeSlider({ label, value, onChange, vertical = false }: {
+export function RangeSlider({ label, value, onChange, vertical = false }: {
   label: string; value: number; onChange: (value: number) => void; vertical?: boolean
 }) {
   const id = useId()
   const percent = Math.round(value * 100)
   return (
-    <div className={`volume-slider${vertical ? ' volume-slider-vertical' : ''}`}>
-      <div className="volume-slider-label">
+    <div className={`range-slider${vertical ? ' range-slider-vertical' : ''}`}>
+      <div className="range-slider-label">
         <label htmlFor={id}>{label}</label>
         <output htmlFor={id}>{percent}%</output>
       </div>

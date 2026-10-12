@@ -1,5 +1,6 @@
 export const WEATHER_CHANNELS = [
   { id: 'wind', label: 'Wind' }, { id: 'rain', label: 'Rain' },
+  { id: 'thunder', label: 'Thunder' },
 ] as const
 export const BIRD_CHANNELS = [
   { id: 'blackbird', label: 'Blackbird', duration: 7 },

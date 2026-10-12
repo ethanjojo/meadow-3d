@@ -4,7 +4,6 @@ import {
   AdditiveBlending,
   Color,
   Mesh,
-  MeshBasicMaterial,
   PerspectiveCamera,
   ShaderMaterial,
   Vector3,
@@ -17,38 +16,21 @@ import type {
 } from '../core/celestial'
 import { projectCelestialPoint } from './celestialProjection'
 import { getBloomEmissionScale } from './postProcessingShaders'
+import type { EnvironmentSnapshot } from '../core/simulation'
+import { getCelestialAppearance } from '../core/celestialAppearance'
+import { celestialVertexShader, haloFragmentShader, sunFragmentShader, moonFragmentShader } from './celestialShaders'
 
 interface CelestialBodiesProps {
   quality: QualityProfile
   atmosphereRef: MutableRefObject<AtmosphereState>
   celestialPresentationRef: MutableRefObject<CelestialPresentation>
   visible: boolean
+  snapshotRef: MutableRefObject<EnvironmentSnapshot>
 }
-
-const haloVertexShader = /* glsl */ `
-  varying vec2 vUv;
-
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-
-const haloFragmentShader = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uOpacity;
-  varying vec2 vUv;
-
-  void main() {
-    float radius = length(vUv - 0.5) * 2.0;
-    float alpha = (1.0 - smoothstep(0.05, 1.0, radius)) * uOpacity;
-    gl_FragColor = vec4(uColor, alpha);
-  }
-`
 
 function createHaloMaterial(color: string, emissionScale: number) {
   return new ShaderMaterial({
-    vertexShader: haloVertexShader,
+    vertexShader: celestialVertexShader,
     fragmentShader: haloFragmentShader,
     uniforms: {
       uColor: { value: new Color(color).multiplyScalar(emissionScale) },
@@ -87,6 +69,7 @@ export function CelestialBodies({
   atmosphereRef,
   celestialPresentationRef,
   visible,
+  snapshotRef,
 }: CelestialBodiesProps) {
   const sunDiscRef = useRef<Mesh>(null)
   const sunHaloRef = useRef<Mesh>(null)
@@ -96,29 +79,25 @@ export function CelestialBodies({
   const bloomEnabled = quality.postprocessing
   const materials = useMemo(
     () => ({
-      sunDisc: new MeshBasicMaterial({
-        color: new Color('#fff0bd').multiplyScalar(
-          getBloomEmissionScale(bloomEnabled, 'sun'),
-        ),
-        transparent: true,
-        opacity: 0,
-        depthTest: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
+      sunDisc: new ShaderMaterial({
+        vertexShader: celestialVertexShader, fragmentShader: sunFragmentShader,
+        uniforms: {
+          uOpacity: { value: 0 }, uWarmth: { value: 0 },
+          uEmission: { value: getBloomEmissionScale(bloomEnabled, 'sun') },
+          uCenter: { value: new Color('#fff7e4') }, uEdge: { value: new Color('#ffe5b0') },
+          uLowCenter: { value: new Color('#ffdc9d') }, uLowEdge: { value: new Color('#ffa960') },
+        },
+        transparent: true, depthTest: true, depthWrite: false,
+        blending: AdditiveBlending, toneMapped: false,
       }),
       sunHalo: createHaloMaterial(
         '#ffc77a',
         getBloomEmissionScale(bloomEnabled, 'sun'),
       ),
-      moonDisc: new MeshBasicMaterial({
-        color: '#e8f2ff',
-        transparent: true,
-        opacity: 0,
-        depthTest: true,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
+      moonDisc: new ShaderMaterial({
+        vertexShader: celestialVertexShader, fragmentShader: moonFragmentShader,
+        uniforms: { uOpacity: { value: 0 }, uPhase: { value: .25 } },
+        transparent: true, depthTest: true, depthWrite: false, toneMapped: false,
       }),
       moonHalo: createHaloMaterial(
         '#a9c6f0',
@@ -143,6 +122,8 @@ export function CelestialBodies({
 
     const atmosphere = atmosphereRef.current
     const presentation = celestialPresentationRef.current
+    const weather = snapshotRef.current.weather
+    const appearance = getCelestialAppearance(snapshotRef.current.elapsed, atmosphere.sunElevation, weather.fog, weather.cloudCover)
     placeBody(
       camera,
       presentation.sun,
@@ -158,14 +139,17 @@ export function CelestialBodies({
       position,
     )
 
-    materials.sunDisc.opacity =
+    materials.sunDisc.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunVisibility
+    materials.sunDisc.uniforms.uWarmth.value = appearance.sunWarmth
     materials.sunHalo.uniforms.uOpacity.value =
-      presentation.sun.opacity * atmosphere.sunHalo * 0.62
-    materials.moonDisc.opacity =
+      presentation.sun.opacity * atmosphere.sunHalo * 0.48
+    materials.moonDisc.uniforms.uPhase.value = appearance.moonPhase
+    materials.moonDisc.uniforms.uOpacity.value =
       presentation.moon.opacity * atmosphere.moonVisibility
     materials.moonHalo.uniforms.uOpacity.value =
-      presentation.moon.opacity * atmosphere.moonHalo * 0.58
+      presentation.moon.opacity * atmosphere.moonHalo * appearance.moonHaloStrength
+    moonHaloRef.current?.scale.multiplyScalar(appearance.moonHaloScale)
   })
 
   return (

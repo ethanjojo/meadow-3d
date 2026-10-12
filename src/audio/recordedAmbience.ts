@@ -1,4 +1,4 @@
-import { playVoice } from './playVoice'
+import { playVoice, type VoiceSettings } from './playVoice'
 
 export interface RecordedCall { id: string; path: string; duration: number; fadeIn?: number; fadeOut?: number }
 export interface CallPlan {
@@ -34,6 +34,7 @@ export function createRecordedAmbience(context: AudioContext, calls: readonly Re
   let loading: Promise<void> | null = null
   let timer: number | null = null
   let disposed = false
+  let running = false
   const voices = new Set<() => void>()
 
   const load = async () => {
@@ -52,10 +53,10 @@ export function createRecordedAmbience(context: AudioContext, calls: readonly Re
   }
 
   const schedule = (delay: number) => {
-    if (disposed || timer !== null || context.state !== 'running' || !buffers.size) return
+    if (disposed || !running || timer !== null || context.state !== 'running' || !buffers.size) return
     timer = window.setTimeout(() => {
       timer = null
-      if (disposed || context.state !== 'running') return
+      if (disposed || !running || context.state !== 'running') return
       const available = calls.filter(call => buffers.has(call.id) && channels.get(call.id)!.level > 0)
       const next = available.length ? plan(available) : null
       if (!next) { schedule(2_000); return }
@@ -67,6 +68,7 @@ export function createRecordedAmbience(context: AudioContext, calls: readonly Re
   }
 
   const suspend = () => {
+    running = false
     if (timer !== null) window.clearTimeout(timer)
     timer = null
     for (const stop of voices) stop()
@@ -74,8 +76,18 @@ export function createRecordedAmbience(context: AudioContext, calls: readonly Re
   }
 
   return {
+    prepare: load,
+    async trigger(id: string, settings: Omit<VoiceSettings, 'duration'>, isCurrent: () => boolean) {
+      await load()
+      const buffer = buffers.get(id), call = calls.find(call => call.id === id), channel = channels.get(id)
+      if (disposed || !isCurrent() || context.state !== 'running' || !buffer || !call || !channel || channel.level === 0) return null
+      const voice = playVoice(context, buffer, { ...settings, duration: call.duration }, channel.gain, () => voices.delete(voice.stop))
+      voices.add(voice.stop)
+      return voice.stop
+    },
     async start() {
       if (disposed) return
+      running = true
       await load()
       schedule(2_000)
     },

@@ -297,9 +297,24 @@ export function createFlowerLayout(count: number, seed: number): FlowerLayout {
   const phases = new Float32Array(flowerCount)
   const yaws = new Float32Array(flowerCount)
   const colorVariation = new Float32Array(flowerCount)
+  let cluster = sampleBandPoint('foreground', random)
+  let clusterRemaining = 0
+  let yellowCluster = false
 
   for (let index = 0; index < flowerCount; index += 1) {
-    const { x, y, z } = sampleBandPoint('foreground', random)
+    if (clusterRemaining === 0) {
+      cluster = sampleBandPoint('foreground', random)
+      clusterRemaining = 3 + Math.floor(random() * 5)
+      yellowCluster = random() > 0.7
+    }
+    clusterRemaining -= 1
+    const radius = Math.sqrt(random()) * (0.22 + random() * 0.48)
+    const angle = random() * Math.PI * 2
+    const z = Math.min(5, Math.max(-4.5, cluster.z + Math.sin(angle) * radius))
+    const halfWidth = lerp(1.2, 8.2, (5 - z) / 9.5)
+    const candidateX = Math.min(halfWidth, Math.max(-halfWidth, cluster.x + Math.cos(angle) * radius))
+    const x = isFarmYard(candidateX, z) ? cluster.x : candidateX
+    const y = terrainHeight(x, z)
     const offsetIndex = index * 3
 
     offsets[offsetIndex] = x
@@ -309,7 +324,7 @@ export function createFlowerLayout(count: number, seed: number): FlowerLayout {
     scales[index] = (0.72 + random() * 0.56) * (0.7 + patchNoise * 0.6)
     phases[index] = random() * Math.PI * 2
     yaws[index] = random() * Math.PI * 2
-    colorVariation[index] = random()
+    colorVariation[index] = yellowCluster ? 0.72 + random() * 0.28 : random() * 0.62
   }
 
   return { offsets, scales, phases, yaws, colorVariation }

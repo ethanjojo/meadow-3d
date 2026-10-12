@@ -11,8 +11,10 @@ import {
   HemisphereLight,
   ShaderMaterial,
   Vector3,
+  Vector2,
 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
+import type { SceneSettings } from '../core/sceneSettings'
 import type { CelestialPresentation } from '../core/celestial'
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
@@ -20,8 +22,11 @@ import type { WeatherEffects } from '../core/weather'
 import { CelestialBodies } from './CelestialBodies'
 import { CloudLayer } from './CloudLayer'
 import { ShootingStars } from './ShootingStars'
+import { cloudFieldChunk } from './cloudShaders'
+import { Lightning } from './Lightning'
 
 interface AtmosphereProps {
+  sceneSettings: SceneSettings
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   atmosphereRef: MutableRefObject<AtmosphereState>
@@ -46,13 +51,19 @@ const skyFragmentShader = /* glsl */ `
   uniform vec3 uHorizonColor;
   uniform vec3 uSunDirection;
   uniform float uSunGlow;
+  uniform float uGoldenHour;
+  uniform float uNightOpacity;
   varying vec3 vWorldDirection;
 
   void main() {
     float height = smoothstep(-0.13, 0.72, vWorldDirection.y);
     vec3 color = mix(uHorizonColor, uTopColor, height);
     float sunHalo = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 18.0);
-    color += vec3(1.0, 0.77, 0.46) * sunHalo * uSunGlow * 0.25;
+    color += vec3(1.0, 0.77, 0.46) * sunHalo * uSunGlow * 0.18;
+    float lowSunGlow = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 5.0);
+    color += vec3(0.65, 0.24, 0.055) * lowSunGlow * uGoldenHour * 0.24;
+    float band = exp(-pow((vWorldDirection.x - vWorldDirection.y * 0.45 + 0.18) * 9.0, 2.0));
+    color += vec3(0.035, 0.039, 0.052) * band * uNightOpacity * smoothstep(0.15, 0.6, vWorldDirection.y);
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -63,13 +74,24 @@ const starVertexShader = /* glsl */ `
   attribute float size;
   attribute float brightness;
   attribute float phase;
+  attribute vec3 tint;
   uniform float uTime;
+  uniform float uMotion;
+  uniform float uCover;
+  uniform vec2 uDrift;
   varying float vBrightness;
+  varying vec3 vTint;
+  ${cloudFieldChunk}
 
   void main() {
     vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
-    float twinkle = 0.88 + sin(uTime * 0.7 + phase) * 0.12;
-    vBrightness = brightness * twinkle;
+    float frequency = 0.18 + fract(phase * 7.31) * 0.7;
+    float twinkle = 1.0 - (0.025 + fract(phase * 13.7) * 0.1) * (1.0 + sin(uTime * frequency * uMotion + phase));
+    vec3 direction = normalize(position - cameraPosition);
+    float horizon = smoothstep(0.02, 0.3, direction.y);
+    float transmission = 1.0 - cloudDensity(cloudSkyPoint(direction), uDrift, uCover) * 0.98;
+    vBrightness = brightness * twinkle * horizon * transmission;
+    vTint = tint;
     gl_PointSize = size * (150.0 / max(1.0, -viewPosition.z));
     gl_Position = projectionMatrix * viewPosition;
   }
@@ -79,11 +101,12 @@ const starFragmentShader = /* glsl */ `
   uniform vec3 uColor;
   uniform float uOpacity;
   varying float vBrightness;
+  varying vec3 vTint;
 
   void main() {
     float radius = length(gl_PointCoord - 0.5) * 2.0;
     float alpha = (1.0 - smoothstep(0.28, 1.0, radius)) * vBrightness * uOpacity;
-    gl_FragColor = vec4(uColor, alpha);
+    gl_FragColor = vec4(uColor * vTint, alpha);
   }
 `
 
@@ -93,6 +116,7 @@ function createStars(count: number) {
   const sizes = new Float32Array(count)
   const brightness = new Float32Array(count)
   const phases = new Float32Array(count)
+  const tints = new Float32Array(count * 3)
   let state = 9_823
   const random = () => {
     state = (state * 1_664_525 + 1_013_904_223) >>> 0
@@ -107,19 +131,24 @@ function createStars(count: number) {
     positions[offset] = Math.cos(azimuth) * Math.cos(elevation) * radius
     positions[offset + 1] = Math.sin(elevation) * radius
     positions[offset + 2] = Math.sin(azimuth) * Math.cos(elevation) * radius
-    sizes[index] = 1.35 + random() * 2.15
-    brightness[index] = 0.55 + random() * 0.45
+    const prominence = random() ** 4
+    sizes[index] = .65 + prominence * 3.1
+    brightness[index] = .16 + prominence * .84
     phases[index] = random() * Math.PI * 2
+    const warmth = random()
+    tints.set([.82 + warmth * .18, .89 + warmth * .08, 1 - warmth * .24], offset)
   }
 
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
   geometry.setAttribute('size', new BufferAttribute(sizes, 1))
   geometry.setAttribute('brightness', new BufferAttribute(brightness, 1))
   geometry.setAttribute('phase', new BufferAttribute(phases, 1))
+  geometry.setAttribute('tint', new BufferAttribute(tints, 3))
   return geometry
 }
 
 export function Atmosphere({
+  sceneSettings,
   quality,
   snapshotRef,
   atmosphereRef,
@@ -146,6 +175,7 @@ export function Atmosphere({
           uColor: { value: new Color('#dbe7ec') },
           uOpacity: { value: 0 },
           uTime: { value: 0 },
+          uMotion: { value: 1 }, uCover: { value: 0 }, uDrift: { value: new Vector2() },
         },
         transparent: true,
         depthWrite: false,
@@ -166,6 +196,8 @@ export function Atmosphere({
           uHorizonColor: { value: new Color('#1b3041') },
           uSunDirection: { value: new Vector3(0.4, 0.8, -0.3).normalize() },
           uSunGlow: { value: 0 },
+          uGoldenHour: { value: 0 },
+          uNightOpacity: { value: 0 },
         },
       }),
     [],
@@ -206,9 +238,14 @@ export function Atmosphere({
     skyMaterial.uniforms.uHorizonColor.value.copy(state.skyHorizon)
     skyMaterial.uniforms.uSunDirection.value.set(...sunDirection)
     skyMaterial.uniforms.uSunGlow.value = state.sunHalo
-    starsMaterial.uniforms.uOpacity.value = state.starOpacity
+    skyMaterial.uniforms.uGoldenHour.value = state.goldenHour
+    skyMaterial.uniforms.uNightOpacity.value = quality.cloudLayers > 1 ? state.starOpacity * sceneSettings.starBrightness * (1 - snapshot.weather.cloudCover) : 0
+    starsMaterial.uniforms.uOpacity.value = state.starOpacity * sceneSettings.starBrightness
     starsMaterial.uniforms.uTime.value = snapshot.autoElapsed
-    gl.toneMappingExposure = state.exposure + effects.stormFlash * 0.06
+    starsMaterial.uniforms.uMotion.value = reducedMotion ? .2 : 1
+    starsMaterial.uniforms.uCover.value = snapshot.weather.cloudCover
+    starsMaterial.uniforms.uDrift.value.set(...snapshot.weather.windDirection).normalize().multiplyScalar(state.cloudPhase)
+    gl.toneMappingExposure = state.exposure
 
     if (fogRef.current) {
       fogRef.current.color.copy(state.fogColor)
@@ -217,11 +254,11 @@ export function Atmosphere({
     if (hemisphereRef.current) {
       hemisphereRef.current.color.copy(state.skyLightColor)
       hemisphereRef.current.groundColor.copy(state.groundLightColor)
-      hemisphereRef.current.intensity = state.skyLightIntensity
+      hemisphereRef.current.intensity = state.skyLightIntensity + effects.stormFlash * .12
     }
     if (sunRef.current) {
       sunRef.current.position.set(...sunDirection).multiplyScalar(78)
-      sunRef.current.intensity = state.sunIntensity + effects.stormFlash * 0.22
+      sunRef.current.intensity = state.sunIntensity
       sunRef.current.color.copy(state.sunColor)
     }
     if (moonRef.current) {
@@ -253,6 +290,7 @@ export function Atmosphere({
       <CelestialBodies
         quality={quality}
         atmosphereRef={atmosphereRef}
+        snapshotRef={snapshotRef}
         celestialPresentationRef={celestialPresentationRef}
         visible={visible}
       />
@@ -260,15 +298,17 @@ export function Atmosphere({
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
+        effectsRef={effectsRef}
         visible={visible}
       />
-      <ShootingStars
+      {sceneSettings.shootingStars ? <ShootingStars
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
         reducedMotion={reducedMotion}
         visible={visible}
-      />
+      /> : null}
+      <Lightning snapshotRef={snapshotRef} effectsRef={effectsRef} quality={quality} visible={visible} />
     </>
   )
 }

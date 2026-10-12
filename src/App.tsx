@@ -7,6 +7,7 @@ import { EnvironmentSettings } from './components/EnvironmentSettings'
 import { SoundToggle } from './components/SoundToggle'
 import { StaticFallback } from './components/StaticFallback'
 import { QUALITY_PROFILES } from './core/quality'
+import { parseSceneSettings, type SceneSettings } from './core/sceneSettings'
 import { parseAudioSettings, type AudioChannelId, type AudioPreviewState, type AudioSettings } from './core/audioSettings'
 import {
   DEFAULT_SIMULATION_SETTINGS,
@@ -23,6 +24,7 @@ import './styles.css'
 
 const ENVIRONMENT_STORAGE_KEY = 'living-meadow:environment'
 const AUDIO_STORAGE_KEY = 'living-meadow:audio'
+const SCENE_STORAGE_KEY = 'living-meadow:scene'
 
 interface VisibleTransitionSample {
   snapshot: EnvironmentSnapshot
@@ -54,6 +56,16 @@ function getInitialSimulationSettings(): SimulationSettings {
 }
 
 export function App() {
+  const [sceneSettings, setSceneSettings] = useState(() => {
+    try { return parseSceneSettings(JSON.parse(localStorage.getItem(SCENE_STORAGE_KEY) ?? 'null')) }
+    catch { return parseSceneSettings(null) }
+  })
+  const handleSceneChange = useCallback((value: SceneSettings) => {
+    const next = parseSceneSettings(value)
+    setSceneSettings(next)
+    try { localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(next)) }
+    catch { /* Settings still apply when storage is unavailable. */ }
+  }, [])
   const visible = usePageVisibility()
   const [soundEnabled, setSoundEnabled] = useState(false)
   const [audioSettings, setAudioSettings] = useState(() => {
@@ -76,8 +88,8 @@ export function App() {
   const webglAvailable = useMemo(hasWebGLSupport, [])
   const reducedMotion = useMemo(
     () =>
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-    [],
+      (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false) || sceneSettings.gentleMotion,
+    [sceneSettings.gentleMotion],
   )
   const capabilities = useMemo(
     () => ({
@@ -219,6 +231,7 @@ export function App() {
           >
             <Suspense fallback={null}>
               <NatureScene
+                sceneSettings={sceneSettings}
                 qualityTier={qualityTier}
                 reducedMotion={reducedMotion}
                 visible={visible}
@@ -235,6 +248,8 @@ export function App() {
       {webglAvailable ? (
         <div className="experience-controls">
           <EnvironmentSettings
+            sceneSettings={sceneSettings}
+            onSceneChange={handleSceneChange}
             value={simulationSettings}
             visibleSnapshot={visibleFrame?.snapshot}
             onChange={handleSimulationSettingsChange}

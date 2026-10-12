@@ -1,13 +1,9 @@
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import {
   Color,
   DoubleSide,
-  Float32BufferAttribute,
-  InstancedBufferAttribute,
-  InstancedBufferGeometry,
   ShaderMaterial,
-  Sphere,
   Vector2,
   Vector3,
 } from 'three'
@@ -17,9 +13,12 @@ import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
 import { cloudShadowChunk } from './grassShaders'
+import { createFlowerBatches, FLOWER_HEAD_HEIGHT } from './flowerGeometry'
 
 interface FlowersProps {
   count: number
+  detailed: boolean
+  reducedMotion: boolean
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
   atmosphereRef: MutableRefObject<AtmosphereState>
@@ -28,210 +27,93 @@ interface FlowersProps {
 
 const FLOWER_VERTEX_SHADER = /* glsl */ `
   attribute vec3 instanceOffset;
-  attribute float instanceScale;
-  attribute float instancePhase;
-  attribute float instanceYaw;
-  attribute float instanceColorVariation;
-
-  uniform float uTime;
-  uniform float uWindStrength;
+  attribute float instanceScale, instancePhase, instanceYaw, instanceColorVariation, flowerPart;
+  uniform float uTime, uWindStrength, uSnowCoverage, uMotion;
   uniform vec2 uWindDirection;
-  uniform float uSnowCoverage;
-
-  varying vec2 vFlowerUv;
-  varying float vViewDepth;
-  varying float vVariation;
+  varying vec2 vFlowerUv, vWorldXZ;
+  varying float vViewDepth, vVariation, vPart;
   varying vec3 vFlowerNormal;
-  varying vec2 vWorldXZ;
-
   mat2 rotate2d(float angle) {
-    float sine = sin(angle);
-    float cosine = cos(angle);
-    return mat2(cosine, -sine, sine, cosine);
+    return mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
   }
-
   void main() {
-    float swayPhase = uTime * (0.7 + uWindStrength * 0.6) + instancePhase;
-    float swayAngle =
-      sin(swayPhase) * 0.055 +
-      sin(swayPhase * 2.7 + 1.3) * 0.02;
-    swayAngle *= 0.25 + uWindStrength;
-    vec2 windDirection = normalize(uWindDirection + vec2(0.0001));
-    float bendCurve = pow(clamp(uv.y, 0.0, 1.0), 1.5);
-    float snowShrink = max(0.08, 1.0 - uSnowCoverage * 0.92);
-    float cameraClearance = smoothstep(
-      1.2,
-      6.0,
-      distance(cameraPosition.xz, instanceOffset.xz)
-    );
-
-    vec3 localPosition = position;
-    localPosition.xz *= instanceScale * snowShrink;
-    localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
-    localPosition.y *=
-      instanceScale * snowShrink * mix(0.08, 1.0, cameraClearance) * 0.42;
-    localPosition.xz += windDirection * sin(swayAngle) * bendCurve;
-
-    vec4 worldPosition = modelMatrix * vec4(localPosition + instanceOffset, 1.0);
-    vec4 viewPosition = viewMatrix * worldPosition;
-    gl_Position = projectionMatrix * viewPosition;
-    vWorldXZ = worldPosition.xz;
-
+    float phase = uTime * (.7 + uWindStrength * .6) + instancePhase;
+    float sway = (sin(phase) * .055 + sin(phase * 2.7 + 1.3) * .02) * (.25 + uWindStrength) * uMotion;
+    vec2 wind = normalize(uWindDirection + vec2(.0001));
+    vec3 local = position;
+    vec3 surfaceNormal = normal;
+    if (flowerPart > 1.5) {
+      float tilt = sin(instancePhase * 1.7) * .42 + sin(phase + .7) * .04 * uMotion;
+      local.yz = rotate2d(tilt) * (local.yz - vec2(${FLOWER_HEAD_HEIGHT}, 0.0)) + vec2(${FLOWER_HEAD_HEIGHT}, 0.0);
+      surfaceNormal.yz = rotate2d(tilt) * surfaceNormal.yz;
+    }
+    float height = max(0.0, local.y / ${FLOWER_HEAD_HEIGHT});
+    float bend = sway + sin(instancePhase) * .04;
+    local.xz += wind * bend * height * height;
+    surfaceNormal.y -= dot(surfaceNormal.xz, wind) * bend * 2.0 * height / ${FLOWER_HEAD_HEIGHT};
+    local.xz = rotate2d(instanceYaw) * local.xz;
+    surfaceNormal.xz = rotate2d(instanceYaw) * surfaceNormal.xz;
+    float shrink = max(.04, 1.0 - uSnowCoverage * .96);
+    float clearance = mix(.12, 1.0, smoothstep(1.2, 5.2, distance(cameraPosition.xz, instanceOffset.xz)));
+    float speciesScale = mix(1.0, .78, step(.68, instanceColorVariation));
+    vec3 scale = vec3(1.0, clearance, 1.0) * instanceScale * shrink * speciesScale;
+    local *= scale;
+    vec4 world = modelMatrix * vec4(local + instanceOffset, 1.0);
+    vec4 view = viewMatrix * world;
+    gl_Position = projectionMatrix * view;
+    vWorldXZ = world.xz;
+    vFlowerNormal = normalize(mat3(modelMatrix) * (surfaceNormal / scale));
     vFlowerUv = uv;
-    vViewDepth = -viewPosition.z;
+    vViewDepth = -view.z;
     vVariation = instanceColorVariation;
-    vFlowerNormal = normalize(vec3(
-      -windDirection.x * swayAngle * 0.8,
-      1.0,
-      -windDirection.y * swayAngle * 0.8
-    ));
+    vPart = flowerPart;
   }
 `
 
 const FLOWER_FRAGMENT_SHADER = /* glsl */ `
-  uniform vec3 uGrassBase;
-  uniform vec3 uDryColor;
-  uniform vec3 uSunColor;
-  uniform vec3 uMoonColor;
-  uniform vec3 uSkyColor;
-  uniform vec3 uGroundLightColor;
-  uniform vec3 uSunDirection;
-  uniform vec3 uMoonDirection;
-  uniform vec3 uFogColor;
-  uniform float uDryness;
-  uniform float uFrost;
-  uniform float uSkyLightIntensity;
-  uniform float uSunIntensity;
-  uniform float uMoonIntensity;
-  uniform float uFogDensity;
-  uniform float uStormFlash;
-  uniform float uTime;
+  uniform vec3 uGrassBase, uDryColor, uSunColor, uMoonColor, uSkyColor, uGroundLightColor;
+  uniform vec3 uSunDirection, uMoonDirection, uFogColor;
+  uniform float uDryness, uFrost, uSkyLightIntensity, uSunIntensity, uMoonIntensity;
+  uniform float uFogDensity, uStormFlash, uCloudPhase, uShadowCover, uShadowStrength;
   uniform vec2 uWindDirection;
-  uniform float uShadowCover;
-  uniform float uShadowStrength;
-
-  varying vec2 vFlowerUv;
-  varying float vViewDepth;
-  varying float vVariation;
+  varying vec2 vFlowerUv, vWorldXZ;
+  varying float vViewDepth, vVariation, vPart;
   varying vec3 vFlowerNormal;
-  varying vec2 vWorldXZ;
-
   ${cloudShadowChunk}
-
   void main() {
-    vec2 headOffset = vec2(
-      (vFlowerUv.x - 0.5) * 0.1,
-      vFlowerUv.y - 0.78
-    );
-    float headDist = length(headOffset);
-    float headPixel = fwidth(headDist);
-    float petalMask = 1.0 - smoothstep(0.03, 0.038 + headPixel, headDist);
-    float centerMask = 1.0 - smoothstep(0.011, 0.017, headDist);
-
-    float stemDistance = abs(vFlowerUv.x - 0.5);
-    float stemPixel = fwidth(stemDistance);
-    float stemMask =
-      (1.0 - smoothstep(0.05 - stemPixel, 0.05 + stemPixel, stemDistance)) *
-      (1.0 - smoothstep(0.72, 0.78, vFlowerUv.y));
-
-    if (max(petalMask, stemMask) < 0.5) discard;
-
-    vec3 stemColor = uGrassBase * mix(0.5, 0.92, vFlowerUv.y);
-    vec3 petalColor = mix(
-      vec3(0.97, 0.96, 0.93),
-      vec3(0.88, 0.84, 0.95),
-      vVariation
-    );
-    petalColor *= 0.92 + vVariation * 0.12;
-    petalColor = mix(petalColor, uDryColor * 1.15, uDryness * 0.55);
-    petalColor = mix(petalColor, vec3(0.95, 0.97, 1.0), uFrost * 0.35);
-    vec3 centerColor = mix(
-      vec3(0.94, 0.77, 0.28),
-      uDryColor * 0.9,
-      uDryness * 0.4
-    );
-    vec3 headColor = mix(petalColor, centerColor, centerMask);
-    vec3 albedo = mix(stemColor, headColor, petalMask);
-    albedo *= 1.0 - (1.0 - smoothstep(0.0, 0.25, vFlowerUv.y)) * 0.35;
-
-    vec3 normal = normalize(vFlowerNormal);
-    float sunFacing = max(dot(normal, uSunDirection), 0.0);
-    float moonFacing = max(dot(normal, uMoonDirection), 0.0);
-    float backlight = max(dot(-normal, uSunDirection), 0.0);
-    vec3 hemisphereFill =
-      mix(uGroundLightColor, uSkyColor, 0.75) * uSkyLightIntensity;
-    vec3 light =
-      hemisphereFill +
-      uSunColor * sunFacing * uSunIntensity * 0.62 +
-      uSunColor * backlight * uSunIntensity * 0.1 +
-      uMoonColor * moonFacing * uMoonIntensity * 0.55;
-    float cloudShade = cloudShadowFactor(
-      vWorldXZ,
-      uWindDirection * uTime * 0.02,
-      uShadowCover
-    );
-    light *= 1.0 - cloudShade * uShadowStrength * 0.42;
-    vec3 litColor = albedo * light;
-    litColor += vec3(1.0) * uStormFlash * 0.14;
-
-    float fogAmount = 1.0 - exp(
-      -uFogDensity * uFogDensity * vViewDepth * vViewDepth
-    );
-    gl_FragColor = vec4(mix(litColor, uFogColor, fogAmount), 1.0);
+    float petal = step(1.5, vPart) * (1.0 - step(2.5, vPart));
+    float center = step(2.5, vPart);
+    float yellow = step(.68, vVariation);
+    vec3 stem = uGrassBase * mix(.78, 1.1, vFlowerUv.y);
+    vec3 petals = mix(vec3(.91,.88,.79), vec3(.96,.63,.055), yellow);
+    petals *= .93 + .07 * vFlowerUv.y;
+    // Gentle central vein and rounded-tip shading on the actual curved petals.
+    petals *= 1.0 - .06 * abs(vFlowerUv.x - .5) * 2.0;
+    petals = mix(petals, uDryColor * 1.1, uDryness * .55);
+    vec3 pollen = mix(vec3(.88,.53,.055), vec3(.69,.38,.025), yellow);
+    float grain = sin(vFlowerUv.x * 100.0) * sin(vFlowerUv.y * 40.0);
+    pollen *= .96 + grain * .035;
+    vec3 albedo = mix(stem, petals, petal);
+    albedo = mix(albedo, pollen, center);
+    albedo = mix(albedo, vec3(.9,.94,.98), uFrost * .25);
+    vec3 n = normalize(vFlowerNormal) * (gl_FrontFacing ? 1.0 : -1.0);
+    float sunFacing = max(dot(n, uSunDirection), 0.0);
+    float moonFacing = max(dot(n, uMoonDirection), 0.0);
+    float backlight = max(dot(-n, uSunDirection), 0.0);
+    vec3 hemisphere = mix(uGroundLightColor, uSkyColor, smoothstep(-.4, 1.0, n.y));
+    vec3 light = hemisphere * uSkyLightIntensity + uSunColor * sunFacing * uSunIntensity * .62
+      + uMoonColor * moonFacing * uMoonIntensity * .55;
+    float cloudShade = cloudShadowFactor(vWorldXZ, uWindDirection * uCloudPhase, uShadowCover);
+    float transmission = backlight * petal * (.12 + .12 * abs(vFlowerUv.x - .5) * 2.0);
+    light += uSunColor * transmission * uSunIntensity;
+    light *= 1.0 - cloudShade * uShadowStrength * .42;
+    vec3 lit = albedo * light + vec3(1.0) * uStormFlash * .14;
+    float fog = 1.0 - exp(-uFogDensity * uFogDensity * vViewDepth * vViewDepth);
+    gl_FragColor = vec4(mix(lit, uFogColor, fog), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `
-
-function createFlowerGeometry(count: number, seed: number) {
-  const halfWidth = 0.05
-  const positions = [
-    -halfWidth, 0, 0,
-    halfWidth, 0, 0,
-    -halfWidth, 1, 0,
-    halfWidth, 1, 0,
-    0, 0, -halfWidth,
-    0, 0, halfWidth,
-    0, 1, -halfWidth,
-    0, 1, halfWidth,
-  ]
-  const uvs = [0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1]
-  const indices = [
-    0, 1, 2,
-    1, 3, 2,
-    4, 5, 6,
-    5, 7, 6,
-  ]
-
-  const layout = createFlowerLayout(count, seed)
-  const geometry = new InstancedBufferGeometry()
-  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2))
-  geometry.setIndex(indices)
-  geometry.setAttribute(
-    'instanceOffset',
-    new InstancedBufferAttribute(layout.offsets, 3),
-  )
-  geometry.setAttribute(
-    'instanceScale',
-    new InstancedBufferAttribute(layout.scales, 1),
-  )
-  geometry.setAttribute(
-    'instancePhase',
-    new InstancedBufferAttribute(layout.phases, 1),
-  )
-  geometry.setAttribute(
-    'instanceYaw',
-    new InstancedBufferAttribute(layout.yaws, 1),
-  )
-  geometry.setAttribute(
-    'instanceColorVariation',
-    new InstancedBufferAttribute(layout.colorVariation, 1),
-  )
-  geometry.instanceCount = count
-  geometry.boundingSphere = new Sphere(new Vector3(0, 0, 0), 12)
-  return geometry
-}
 
 function createFlowerMaterial() {
   return new ShaderMaterial({
@@ -241,6 +123,7 @@ function createFlowerMaterial() {
     toneMapped: true,
     uniforms: {
       uTime: { value: 0 },
+      uMotion: { value: 1 },
       uWindStrength: { value: 0.5 },
       uWindDirection: { value: new Vector2(1, 0) },
       uSnowCoverage: { value: 0 },
@@ -259,7 +142,7 @@ function createFlowerMaterial() {
       uSunIntensity: { value: 1.4 },
       uMoonIntensity: { value: 0.18 },
       uFogDensity: { value: 0.009 },
-      uStormFlash: { value: 0 },
+      uStormFlash: { value: 0 }, uCloudPhase: { value: 0 },
       uShadowCover: { value: 0 },
       uShadowStrength: { value: 0 },
     },
@@ -268,21 +151,19 @@ function createFlowerMaterial() {
 
 export function Flowers({
   count,
+  detailed,
+  reducedMotion,
   snapshotRef,
   seasonRef,
   atmosphereRef,
   effectsRef,
 }: FlowersProps) {
-  const geometry = useMemo(() => createFlowerGeometry(count, 9_461), [count])
+  const camera = useThree(state => state.camera)
+  const batches = useMemo(() => createFlowerBatches(createFlowerLayout(count, 9_461), camera.position, detailed), [count, camera, detailed])
   const material = useMemo(createFlowerMaterial, [])
 
-  useEffect(
-    () => () => {
-      geometry.dispose()
-      material.dispose()
-    },
-    [geometry, material],
-  )
+  useEffect(() => () => batches.forEach(batch => batch.geometry.dispose()), [batches])
+  useEffect(() => () => material.dispose(), [material])
 
   useFrame(() => {
     const snapshot = snapshotRef.current
@@ -290,6 +171,8 @@ export function Flowers({
     const atmosphere = atmosphereRef.current
     const { uniforms } = material
     uniforms.uTime.value = snapshot.elapsed
+    uniforms.uMotion.value = reducedMotion ? .25 : 1
+    uniforms.uCloudPhase.value = atmosphereRef.current.cloudPhase
     uniforms.uWindStrength.value = snapshot.weather.windStrength
     uniforms.uWindDirection.value
       .set(...snapshot.weather.windDirection)
@@ -298,10 +181,7 @@ export function Flowers({
     uniforms.uGrassBase.value.copy(season.grassColor)
     uniforms.uDryness.value = season.dryness
     uniforms.uFrost.value = season.frost
-    uniforms.uSnowCoverage.value = Math.max(
-      season.snowCoverage,
-      snapshot.weather.snow * 0.72,
-    )
+    uniforms.uSnowCoverage.value = atmosphere.snowCover
     uniforms.uShadowCover.value = snapshot.weather.cloudCover
     uniforms.uShadowStrength.value =
       Math.min(1, atmosphere.sunIntensity / 1.2) *
@@ -310,11 +190,8 @@ export function Flowers({
   })
 
   return (
-    <mesh
-      geometry={geometry}
-      material={material}
-      frustumCulled={false}
-      renderOrder={1}
-    />
+    <group>
+      {batches.map(batch => <mesh key={batch.key} geometry={batch.geometry} material={material} frustumCulled={false} />)}
+    </group>
   )
 }

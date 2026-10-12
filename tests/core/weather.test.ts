@@ -183,12 +183,12 @@ describe('getWeatherOpacity', () => {
     expect(eastWind.x).toBeGreaterThan(0)
     expect(westWind.x).toBeLessThan(0)
     expect(Math.abs(eastWind.x / eastWind.y)).toBeCloseTo(
-      0.04857142857142858,
+      0.16,
     )
     expect(
       Math.hypot(diagonalWind.x, diagonalWind.z) /
         Math.abs(diagonalWind.y),
-    ).toBeCloseTo(0.04857142857142858)
+    ).toBeCloseTo(0.16)
   })
 
   it('suppresses fast storm flashes for reduced motion', () => {

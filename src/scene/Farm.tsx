@@ -5,6 +5,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { FARM } from '../core/farm'
 import { terrainHeight } from '../core/grassLayout'
 import type { AtmosphereState } from '../core/atmosphere'
+import type { EnvironmentSnapshot } from '../core/simulation'
+import type { WeatherEffects } from '../core/weather'
 
 type Surface = 'red' | 'siding' | 'trim' | 'roof' | 'seam' | 'dark' | 'stone' | 'yard'
 const COLORS: Record<Surface, string> = {
@@ -91,20 +93,32 @@ function buildFarm() {
   })
 }
 
-export function Farm({ atmosphereRef }: { atmosphereRef: MutableRefObject<AtmosphereState> }) {
+export function Farm({ atmosphereRef, snapshotRef, effectsRef }: { atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects> }) {
   const meshes = useMemo(buildFarm, [])
   const materials = useRef<(MeshStandardMaterial | null)[]>([])
+  const snowUniform = useMemo(() => ({ value: 0 }), [])
   useEffect(() => () => meshes.forEach(mesh => mesh.geometry.dispose()), [meshes])
   useFrame(() => {
     // Match the meadow ground's soft ambient fill; keep the night silhouette dim.
-    const fill = 0.025 + Math.min(1, atmosphereRef.current.sunIntensity / 1.8) * 0.42
-    materials.current.forEach(material => { if (material) material.emissiveIntensity = fill })
+    const atmosphere = atmosphereRef.current
+    const fill = 0.025 + Math.min(1, atmosphere.sunIntensity / 1.8) * 0.42 * (1 - atmosphere.goldenHour * .65)
+    snowUniform.value = atmosphereRef.current.snowCover
+    materials.current.forEach((material, index) => {
+      if (!material) return
+      material.emissiveIntensity = fill * (1 - snowUniform.value * .7) + effectsRef.current.stormFlash * .3
+      material.roughness = (meshes[index].surface === 'roof' ? .63 : .92) - snapshotRef.current.weather.wetness * .12
+    })
   })
   return (
     <group name="farm-barn" position={[FARM.x, terrainHeight(FARM.x, FARM.z) - 0.04, FARM.z]} rotation-y={FARM.rotation} scale={FARM.scale}>
       {meshes.map(({ surface, geometry }, index) => (
         <mesh key={surface} geometry={geometry} castShadow receiveShadow>
-          <meshStandardMaterial ref={material => { materials.current[index] = material }} color={COLORS[surface]} emissive={COLORS[surface]} emissiveIntensity={0.25} roughness={surface === 'roof' ? 0.63 : 0.92} />
+          <meshStandardMaterial ref={material => { materials.current[index] = material }} color={COLORS[surface]} emissive={COLORS[surface]} emissiveIntensity={0.25} roughness={surface === 'roof' ? 0.63 : 0.92}
+            onBeforeCompile={shader => {
+              shader.uniforms.uSnowCover = snowUniform
+              shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vSnowExposure;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvSnowExposure = smoothstep(0.32, 0.85, normal.y);')
+              shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnowCover; varying float vSnowExposure;').replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.92, 0.95), vSnowExposure * uSnowCover);')
+            }} />
         </mesh>
       ))}
     </group>

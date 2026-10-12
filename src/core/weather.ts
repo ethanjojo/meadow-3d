@@ -1,6 +1,7 @@
 import type { NatureSnapshot } from './natureClock'
 import type { SeasonAppearance } from './season'
 import type { WeatherPreset, WeatherState } from './simulation'
+import { getStormEvent } from './sceneEffects'
 
 export interface WeatherOpacity {
   pollen: number
@@ -20,7 +21,7 @@ export interface RainStreakOrientation {
   z: number
 }
 
-export const RAIN_STREAK_WIND_DRIFT = 0.85
+export const RAIN_STREAK_WIND_DRIFT = 2.8
 export const RAIN_STREAK_FALL_DISTANCE = 14
 
 interface WeatherEffectInput {
@@ -175,10 +176,7 @@ export function deriveWeatherEffects({
   const dewSky = 1 - smoothstep(0.25, 0.5, weather.cloudCover)
   const dewAir = 1 - smoothstep(0.2, 0.5, weather.fog)
   const dawn = 1 - smoothstep(0.035, 0.13, circularDistance(dayPhase, 0.25, 1))
-  const safeElapsed = Number.isFinite(elapsed) ? elapsed : 0
-  const flashPhase = ((safeElapsed % 13.7) + 13.7) % 13.7
-  const firstFlash = 1 - smoothstep(0, 0.11, Math.abs(flashPhase - 1.15))
-  const secondFlash = 1 - smoothstep(0, 0.08, Math.abs(flashPhase - 1.48))
+  const stormEvent = getStormEvent(elapsed)
 
   const effects = target ?? {
     pollen: 0,
@@ -205,7 +203,7 @@ export function deriveWeatherEffects({
   )
   effects.stormFlash = reducedMotion
     ? 0
-    : clamp01(weather.storm * Math.max(firstFlash, secondFlash * 0.72))
+    : clamp01(weather.storm * stormEvent.flash / (1 + stormEvent.distanceKm * .25))
   return effects
 }
 

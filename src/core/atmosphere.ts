@@ -10,7 +10,9 @@ const DAY_TOP = new Color('#286f9f')
 const NIGHT_HORIZON = new Color('#22394c')
 const DAY_HORIZON = new Color('#9bbeb5')
 const SUNSET = new Color('#e7a46e')
-const LOW_SUN = new Color('#ffd09a')
+const LOW_SUN = new Color('#ff983f')
+const GOLDEN_HORIZON = new Color('#f39855')
+const GOLDEN_SKY_LIGHT = new Color('#edb185')
 const DAY_SUN = new Color('#fff2cf')
 const MOON_LIGHT = new Color('#8ba8cf')
 const NIGHT_SKY_LIGHT = new Color('#8298ae')
@@ -26,6 +28,7 @@ export interface AtmosphereState {
   skyLightColor: Color
   groundLightColor: Color
   sunElevation: number
+  goldenHour: number
   sunAzimuth: number
   sunIntensity: number
   moonIntensity: number
@@ -37,6 +40,8 @@ export interface AtmosphereState {
   moonHalo: number
   cloudOpacity: number
   cloudSpeed: number
+  cloudPhase: number
+  snowCover: number
   fogDensity: number
   exposure: number
 }
@@ -103,6 +108,7 @@ export function getAtmosphere(
     skyLightColor: new Color(),
     groundLightColor: new Color(),
     sunElevation: 0,
+    goldenHour: 0,
     sunAzimuth: 0,
     sunIntensity: 0,
     moonIntensity: 0,
@@ -114,6 +120,8 @@ export function getAtmosphere(
     moonHalo: 0,
     cloudOpacity: 0,
     cloudSpeed: 0,
+    cloudPhase: 0,
+    snowCover: season.snowCoverage,
     fogDensity: 0,
     exposure: 0,
   }
@@ -129,6 +137,11 @@ export function getAtmosphere(
   )
   const cloudTransmission = 1 - cloudOpacity * 0.88
   const fogTransmission = 1 - snapshot.weather.fog * 0.76
+  // Low, above-horizon sunlight warms the whole scene; dense weather blocks it.
+  const goldenHour = smoothstep(-0.04, 0.1, sunElevation) *
+    (1 - smoothstep(0.25, 0.62, sunElevation)) *
+    (1 - snapshot.weather.cloudCover * 0.85) * fogTransmission *
+    (1 - snapshot.weather.storm * 0.65)
   const starOpacity =
     (1 - smoothstep(-0.28, 0.04, sunElevation)) *
     cloudTransmission *
@@ -148,6 +161,7 @@ export function getAtmosphere(
     .copy(NIGHT_HORIZON)
     .lerp(DAY_HORIZON, daylight)
     .lerp(SUNSET, twilight * (1 - Math.abs(daylight - 0.5) * 1.5) * 0.34)
+    .lerp(GOLDEN_HORIZON, goldenHour * 0.88)
   const skyDesaturation = clamp(
     snapshot.weather.cloudCover * 0.18 +
       snapshot.weather.fog * 0.22 +
@@ -158,20 +172,22 @@ export function getAtmosphere(
   state.skyTop.lerp(WEATHER_SKY, skyDesaturation)
   state.skyHorizon.lerp(WEATHER_HORIZON, skyDesaturation * 0.72)
   state.fogColor.copy(state.skyHorizon).lerp(season.groundColor, 0.14)
-  state.sunColor.copy(sunElevation < 0.35 ? LOW_SUN : DAY_SUN)
+  state.sunColor.copy(DAY_SUN).lerp(LOW_SUN, goldenHour)
   state.moonColor.copy(MOON_LIGHT)
   state.skyLightColor
     .copy(NIGHT_SKY_LIGHT)
     .lerp(DAY_SKY_LIGHT, daylight)
+    .lerp(GOLDEN_SKY_LIGHT, goldenHour * 0.42)
     .lerp(WEATHER_SKY, skyDesaturation * 0.35)
   state.groundLightColor.copy(season.groundColor)
   state.sunElevation = sunElevation
+  state.goldenHour = goldenHour
   state.sunAzimuth = solarAngle
   state.sunIntensity = 0.05 + daylight * (0.65 + sunVisibility * 1.4)
   state.moonIntensity = 0.05 + (1 - daylight) * moonVisibility * 0.46
   state.skyLightIntensity = clamp(
     0.38 + daylight * 0.32 - snapshot.weather.cloudCover * 0.08 -
-      snapshot.weather.fog * 0.05,
+      snapshot.weather.fog * 0.05 - goldenHour * 0.12,
     0.34,
     0.7,
   )
@@ -253,6 +269,7 @@ export function blendAtmosphere(
   )
 
   output.sunElevation = mix(source.sunElevation, target.sunElevation, blend)
+  output.goldenHour = mix(source.goldenHour, target.goldenHour, blend)
   output.sunAzimuth = mix(source.sunAzimuth, target.sunAzimuth, blend)
   output.sunIntensity = mix(source.sunIntensity, target.sunIntensity, blend)
   output.moonIntensity = mix(source.moonIntensity, target.moonIntensity, blend)
@@ -268,6 +285,8 @@ export function blendAtmosphere(
   output.moonHalo = mix(source.moonHalo, target.moonHalo, blend)
   output.cloudOpacity = mix(source.cloudOpacity, target.cloudOpacity, blend)
   output.cloudSpeed = mix(source.cloudSpeed, target.cloudSpeed, blend)
+  output.cloudPhase = mix(source.cloudPhase, target.cloudPhase, blend)
+  output.snowCover = mix(source.snowCover, target.snowCover, blend)
   output.fogDensity = mix(source.fogDensity, target.fogDensity, blend)
   output.exposure = mix(source.exposure, target.exposure, blend)
   return output

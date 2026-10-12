@@ -1,6 +1,8 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
-import { blendAtmosphere, getAtmosphere } from '../core/atmosphere'
+import { advanceCloudPhase, blendAtmosphere, getAtmosphere } from '../core/atmosphere'
+import { advanceSnowCover, sampleGust } from '../core/sceneEffects'
+import { applySceneEffects, getFlowerCount, type SceneSettings } from '../core/sceneSettings'
 import { getCelestialPresentation } from '../core/celestial'
 import {
   DEFAULT_CLOCK,
@@ -23,8 +25,10 @@ import { Farm } from './Farm'
 import { Meadow } from './Meadow'
 import { PostProcessing } from './PostProcessing'
 import { WeatherParticles } from './WeatherParticles'
+import { GroundMist } from './GroundMist'
 
 interface NatureSceneProps {
+  sceneSettings: SceneSettings
   qualityTier: QualityTier
   reducedMotion: boolean
   visible: boolean
@@ -48,6 +52,7 @@ interface DevelopmentCelestialSample {
 
 type DevelopmentWindow = Window & {
   __livingMeadowCelestial?: DevelopmentCelestialSample
+  __livingMeadowEffects?: { stormFlash: number; snowCover: number; cloudPhase: number; fireflies: number; windStrength: number }
 }
 
 function getDevelopmentCelestialOverride(): DevelopmentCelestialOverride | null {
@@ -68,6 +73,7 @@ function getDevelopmentCelestialOverride(): DevelopmentCelestialOverride | null 
 }
 
 export function NatureScene({
+  sceneSettings,
   qualityTier,
   reducedMotion,
   visible,
@@ -82,6 +88,11 @@ export function NatureScene({
     getDevelopmentCelestialOverride,
     [],
   )
+  const developmentEffectsTime = useMemo(() => {
+    if (!import.meta.env.DEV) return null
+    const raw = new URLSearchParams(window.location.search).get('__e2eEffects')
+    return raw !== null && Number.isFinite(Number(raw)) ? Math.max(0, Number(raw)) : null
+  }, [])
   const initialAutoSnapshot = useMemo(
     () => sampleNatureClock(DAY_START_OFFSET, DEFAULT_CLOCK),
     [],
@@ -146,6 +157,7 @@ export function NatureScene({
   const sourceEffectsRef = useRef(initialEffects.source)
   const targetEffectsRef = useRef(initialEffects.target)
   const effectsRef = useRef(initialEffects.resolved)
+  const visualEffectsRef = useRef({ ...initialEffects.resolved })
   const initialCelestial = useMemo(
     () => ({
       frozen: getCelestialPresentation(
@@ -174,6 +186,11 @@ export function NatureScene({
   const lastResolvedRevisionRef = useRef(initialTransition.revision)
   const activeElapsedRef = useRef(0)
   const lastExternalSampleRef = useRef(-1)
+  const cloudPhaseRef = useRef(0)
+  const snowCoverRef = useRef(initialSeasons.resolved.snowCoverage)
+  const snowTransitionSourceRef = useRef(snowCoverRef.current)
+  const snowTransitionActiveRef = useRef(initialTransition.active)
+  const developmentEffectsSampleRef = useRef({ stormFlash: 0, snowCover: 0, cloudPhase: 0, fireflies: 0, windStrength: 0 })
 
   useFrame((_, delta) => {
     if (!visible) return
@@ -181,7 +198,7 @@ export function NatureScene({
     const safeDelta = Math.min(Math.max(delta, 0), 0.5)
     activeElapsedRef.current += safeDelta
     const autoSnapshot = sampleNatureClock(
-      activeElapsedRef.current + DAY_START_OFFSET,
+      developmentEffectsTime ?? activeElapsedRef.current + DAY_START_OFFSET,
       DEFAULT_CLOCK,
     )
     const frame = stepEnvironmentTransition(
@@ -195,6 +212,7 @@ export function NatureScene({
       frame.revision !== lastResolvedRevisionRef.current
 
     if (revisionChanged) {
+      snowTransitionSourceRef.current = snowCoverRef.current
       getCelestialPresentation(
         frame.source.dayPhase,
         frame.target.dayPhase,
@@ -294,13 +312,34 @@ export function NatureScene({
     )
 
     snapshotRef.current = frame.snapshot
+    const gust = sampleGust(frame.snapshot.elapsed)
+    frame.snapshot.weather.windStrength = Math.min(1, frame.snapshot.weather.windStrength * gust)
+    cloudPhaseRef.current = advanceCloudPhase(cloudPhaseRef.current, safeDelta, atmosphereRef.current.cloudSpeed * gust * (reducedMotion ? .35 : 1))
+    atmosphereRef.current.cloudPhase = cloudPhaseRef.current
+    const snowTransition = frame.active || snowTransitionActiveRef.current
+    const targetSnow = snowTransition
+      ? Math.max(targetSeasonRef.current.snowCoverage, targetEffectsRef.current.snow * .85)
+      : Math.max(seasonRef.current.snowCoverage, effectsRef.current.snow * .85)
+    snowCoverRef.current = advanceSnowCover(snowCoverRef.current, targetSnow, safeDelta, snowTransition ? { from: snowTransitionSourceRef.current, progress: frame.progress } : undefined)
+    snowTransitionActiveRef.current = frame.active
+    atmosphereRef.current.snowCover = snowCoverRef.current
+    applySceneEffects(effectsRef.current, sceneSettings, visualEffectsRef.current)
+    if (import.meta.env.DEV) {
+      const sample = developmentEffectsSampleRef.current
+      sample.stormFlash = effectsRef.current.stormFlash
+      sample.snowCover = snowCoverRef.current
+      sample.cloudPhase = cloudPhaseRef.current
+      sample.fireflies = effectsRef.current.fireflies
+      sample.windStrength = frame.snapshot.weather.windStrength
+      ;(window as DevelopmentWindow).__livingMeadowEffects = sample
+    }
     recordFrame?.(delta)
 
     if (
       onNatureSample &&
-      frame.snapshot.elapsed - lastExternalSampleRef.current >= 0.25
+      activeElapsedRef.current - lastExternalSampleRef.current >= 0.25
     ) {
-      lastExternalSampleRef.current = frame.snapshot.elapsed
+      lastExternalSampleRef.current = activeElapsedRef.current
       onNatureSample(frame)
     }
   })
@@ -308,31 +347,36 @@ export function NatureScene({
   return (
     <>
       <Atmosphere
+        sceneSettings={sceneSettings}
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
         celestialPresentationRef={celestialPresentationRef}
-        effectsRef={effectsRef}
+        effectsRef={visualEffectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
       />
       <Meadow
+        flowerCount={getFlowerCount(quality.flowerCount, sceneSettings)}
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
         atmosphereRef={atmosphereRef}
-        effectsRef={effectsRef}
+        effectsRef={visualEffectsRef}
         reducedMotion={reducedMotion}
       />
       <WeatherParticles
+        fireflyDensity={sceneSettings.fireflyDensity}
         quality={quality}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
-        effectsRef={effectsRef}
+        atmosphereRef={atmosphereRef}
+        effectsRef={visualEffectsRef}
         reducedMotion={reducedMotion}
         visible={visible}
       />
-      <Farm atmosphereRef={atmosphereRef} />
+      <GroundMist quality={quality} atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} visible={visible} reducedMotion={reducedMotion} />
+      <Farm atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} effectsRef={visualEffectsRef} />
       <FixedCamera />
       {quality.postprocessing ? <PostProcessing quality={quality} /> : null}
     </>

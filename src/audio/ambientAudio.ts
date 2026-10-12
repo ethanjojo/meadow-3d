@@ -6,6 +6,7 @@ import { createFarmAudio } from './farmAudio'
 import { createBirdAudio, deriveBirdActivity } from './birdAudio'
 import { BIRD_CHANNELS, DEFAULT_AUDIO_SETTINGS, type AudioChannelId, type AudioSettings } from '../core/audioSettings'
 import { playVoice } from './playVoice'
+import { createThunderAudio } from './thunderAudio'
 
 export interface AmbientAudioController {
   start: () => Promise<boolean>
@@ -94,6 +95,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
   let lastRevision = -1
   let farm: ReturnType<typeof createFarmAudio> | null = null
   let birds: ReturnType<typeof createBirdAudio> | null = null
+  let thunder: ReturnType<typeof createThunderAudio> | null = null
   let noiseBuffer: AudioBuffer | null = null
   let ambientRunning = false
   let previewRevision = 0
@@ -134,6 +136,8 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
     masterGain.connect(context.destination)
     farm = createFarmAudio(context, masterGain)
     birds = createBirdAudio(context, masterGain)
+    thunder = createThunderAudio(context, masterGain)
+    thunder.setLevel(settings.channels.thunder)
     farm.setChannelVolumes(settings.channels)
     birds.setChannelVolumes(settings.channels)
     farm.setDayGain(lastAppliedMix?.dayGain ?? 0)
@@ -196,6 +200,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       masterGain?.gain.setTargetAtTime(settings.master, context!.currentTime, 0.06)
       void farm?.start()
       void birds?.start()
+      thunder?.start()
       return true
     } catch {
       if (revision === activationRevision) setPlaybackSession(false)
@@ -212,6 +217,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       masterGain?.gain.setTargetAtTime(ambientRunning ? settings.master : 0, context.currentTime, 0.06)
       farm?.setChannelVolumes(settings.channels)
       birds?.setChannelVolumes(settings.channels)
+      thunder?.setLevel(settings.channels.thunder)
       windGain?.gain.setTargetAtTime((lastAppliedMix?.windGain ?? 0.022) * settings.channels.wind, context.currentTime, 0.06)
       rainGain?.gain.setTargetAtTime((lastAppliedMix?.rainGain ?? 0) * settings.channels.rain, context.currentTime, 0.06)
     },
@@ -242,7 +248,9 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
           cancelPreview = playVoice(audio, noiseBuffer!, { duration: 2, volume: 0.06, rate: 1, pan: 0, cutoff: id === 'wind' ? 720 : 1_650, filterType: id === 'wind' ? 'lowpass' : 'highpass' }, audio.destination, finished).stop
         } else {
           const player = BIRD_CHANNELS.some(channel => channel.id === id) ? birds : farm
-          const cancel = await player!.preview(id, () => revision === previewRevision, finished)
+          const cancel = id === 'thunder'
+            ? await thunder!.preview(() => revision === previewRevision, finished)
+            : await player!.preview(id, () => revision === previewRevision, finished)
           if (revision !== previewRevision) { cancel?.(); return false }
           cancelPreview = cancel
         }
@@ -259,6 +267,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
     stopPreview,
 
     setNature(frame) {
+      thunder?.sync(frame.snapshot)
       const sourceMix = deriveAmbientAudioMix(frame.source)
       const targetMix = deriveAmbientAudioMix(frame.target)
       if (frame.revision !== lastRevision) {
@@ -301,6 +310,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       masterGain?.gain.setValueAtTime(0, context?.currentTime ?? 0)
       farm?.suspend()
       birds?.suspend()
+      thunder?.suspend()
       if (context?.state === 'running') await context.suspend()
     },
 
@@ -316,6 +326,8 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       farm = null
       birds?.dispose()
       birds = null
+      thunder?.dispose()
+      thunder = null
       try {
         windSource?.stop()
         rainSource?.stop()

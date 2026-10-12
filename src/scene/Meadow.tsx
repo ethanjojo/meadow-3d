@@ -45,6 +45,7 @@ import {
 } from './grassTextures'
 
 interface MeadowProps {
+  flowerCount: number
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   seasonRef: MutableRefObject<SeasonAppearance>
@@ -220,7 +221,7 @@ function createGrassMaterial(
       uSkyLightIntensity: { value: 0.7 },
       uSunIntensity: { value: 1.4 },
       uMoonIntensity: { value: 0.18 },
-      uStormFlash: { value: 0 },
+      uStormFlash: { value: 0 }, uCloudPhase: { value: 0 },
       uGrassColorAtlas: { value: colorAtlas },
       uGrassSurfaceAtlas: { value: surfaceAtlas },
       uUseAtlas: { value: 0 },
@@ -232,6 +233,7 @@ function createGrassMaterial(
 }
 
 export function Meadow({
+  flowerCount,
   quality,
   snapshotRef,
   seasonRef,
@@ -351,15 +353,13 @@ export function Meadow({
       uniforms.uBendLimit.value = bendLimit
       uniforms.uFlutterStrength.value = flutterStrength
       uniforms.uStormFlash.value = effects.stormFlash
+      uniforms.uCloudPhase.value = atmosphere.cloudPhase
       uniforms.uGrassBase.value.copy(season.grassColor)
       uniforms.uGrassTip.value.copy(season.tipColor)
       uniforms.uDryness.value = season.dryness
       uniforms.uWetness.value = wetness
       uniforms.uFrost.value = season.frost
-      uniforms.uSnowCoverage.value = Math.max(
-        season.snowCoverage,
-        snapshot.weather.snow * 0.72,
-      )
+      uniforms.uSnowCoverage.value = atmosphere.snowCover
       syncGrassAtmosphereUniforms(uniforms, atmosphere)
     }
 
@@ -374,7 +374,7 @@ export function Meadow({
     }
     groundCloudUniforms.cover.value = shadowCover
     groundCloudUniforms.strength.value = shadowStrength
-    groundCloudUniforms.time.value = snapshot.elapsed * 0.02
+    groundCloudUniforms.time.value = atmosphere.cloudPhase
     groundCloudUniforms.wind.value
       .set(...snapshot.weather.windDirection)
       .normalize()
@@ -383,12 +383,13 @@ export function Meadow({
       terrainMaterialRef.current.color
         .copy(season.groundColor)
         .multiplyScalar(1 - wetness * 0.24)
-        .lerp(SNOW_COLOR, season.snowCoverage * 0.82)
+        .lerp(SNOW_COLOR, atmosphere.snowCover * 0.88)
       terrainMaterialRef.current.emissive
         .copy(terrainMaterialRef.current.color)
         .multiplyScalar(0.26)
       terrainMaterialRef.current.emissiveIntensity =
-        0.55 + (1 - Math.min(1, atmosphere.sunIntensity / 1.3)) * 0.35
+        (0.55 + (1 - Math.min(1, atmosphere.sunIntensity / 1.3)) * 0.35) *
+        (1 - atmosphere.goldenHour * 0.5)
       terrainMaterialRef.current.roughness =
         0.95 - season.frost * 0.18 - wetness * 0.08
     }
@@ -470,7 +471,9 @@ ${cloudShadowChunk}`,
         />
       ))}
       <Flowers
-        count={Math.min(720, Math.round(quality.grassBlades * 0.008))}
+        count={flowerCount}
+        detailed={quality.flowerDetail}
+        reducedMotion={reducedMotion}
         snapshotRef={snapshotRef}
         seasonRef={seasonRef}
         atmosphereRef={atmosphereRef}

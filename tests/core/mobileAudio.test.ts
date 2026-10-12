@@ -4,6 +4,7 @@ import { createAmbientAudio } from '../../src/audio/ambientAudio'
 const players = vi.hoisted(() => ({ start: vi.fn(), suspend: vi.fn(), dispose: vi.fn(), setChannelVolumes: vi.fn(), setDayGain: vi.fn(), setActivity: vi.fn() }))
 vi.mock('../../src/audio/farmAudio', () => ({ createFarmAudio: () => players }))
 vi.mock('../../src/audio/birdAudio', () => ({ createBirdAudio: () => players, deriveBirdActivity: () => 0 }))
+vi.mock('../../src/audio/thunderAudio', () => ({ createThunderAudio: () => ({ ...players, setLevel: vi.fn(), sync: vi.fn() }) }))
 
 function setup(withSession = true) {
   const session = { type: 'ambient' }

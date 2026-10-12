@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import type { SceneSettings } from '../core/sceneSettings'
 import type { SeasonIndex } from '../core/natureClock'
 import type { AudioChannelId, AudioPreviewState, AudioSettings } from '../core/audioSettings'
-import { AdvancedAudioSettings } from './AdvancedAudioSettings'
 import type {
   EnvironmentSnapshot,
   SimulationSettings,
   WeatherPreset,
 } from '../core/simulation'
 
+const AdvancedSettings = lazy(() => import('./AdvancedSettings').then(module => ({ default: module.AdvancedSettings })))
+
 interface EnvironmentSettingsProps {
+  sceneSettings: SceneSettings
+  onSceneChange: (next: SceneSettings) => void
   value: SimulationSettings
   visibleSnapshot?: EnvironmentSnapshot | null
   onChange: (next: SimulationSettings) => void
@@ -64,6 +68,8 @@ function getEnglishTimeText(dayPhase: number) {
 }
 
 export function EnvironmentSettings({
+  sceneSettings,
+  onSceneChange,
   value,
   visibleSnapshot,
   onChange,
@@ -208,9 +214,11 @@ export function EnvironmentSettings({
             </button>
         </section>
       ) : null}
-        <AdvancedAudioSettings open={advancedOpen} value={audioSettings} enabled={soundEnabled} onChange={onAudioChange} onSoundChange={onSoundChange}
+      {advancedOpen ? <Suspense fallback={<span className="settings-loading" role="status">Opening settings…</span>}>
+        <AdvancedSettings sceneSettings={sceneSettings} onSceneChange={onSceneChange} open={advancedOpen} value={audioSettings} enabled={soundEnabled} onChange={onAudioChange} onSoundChange={onSoundChange}
           onMasterVolumeChange={onMasterVolumeChange} preview={preview} onPreview={onPreview} onStopPreview={onStopPreview}
           onClose={() => { setAdvancedOpen(false); triggerRef.current?.focus() }} />
+      </Suspense> : null}
     </div>
   )
 }

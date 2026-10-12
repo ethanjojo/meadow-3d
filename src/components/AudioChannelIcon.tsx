@@ -2,6 +2,7 @@ import type { AudioChannelId } from '../core/audioSettings'
 
 const bird = 'M5 16c-2-2-2-6 1-8 2-2 5-1 6 1l5 1-3 3c1 3-2 6-5 6H3l2-3Zm3-4 3 2M8 19v2m3-2v2'
 const paths: Record<AudioChannelId, string> = {
+  thunder: 'M5 12a4 4 0 0 1 0-8 6 6 0 0 1 11-1 4 4 0 0 1 2 9M13 10l-5 7h4l-2 6 7-9h-5l1-4',
   wind: 'M3 8h12c4 0 4-5 1-5-2 0-3 1-3 2M3 12h16c4 0 4 5 1 5-2 0-3-1-3-2M3 16h7c3 0 3 5 0 5',
   rain: 'M5 12a4 4 0 0 1 0-8 6 6 0 0 1 11-1 4 4 0 0 1 2 9H5Zm1 4-1 3m7-3-1 4m7-4-1 3',
   blackbird: bird, tit: bird, chaffinch: bird, sparrow: bird,

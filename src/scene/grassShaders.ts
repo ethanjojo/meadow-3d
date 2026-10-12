@@ -1,37 +1,15 @@
+import { cloudFieldChunk } from './cloudShaders'
+
 export function getGrassShaderDefines(detailedLighting: boolean) {
   return detailedLighting ? {} : { SIMPLE_GRASS_LIGHTING: 1 }
 }
 
 export const cloudShadowChunk = /* glsl */ `
-  float meadowHash(vec2 point) {
-    return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
-  }
-
-  float meadowNoise(vec2 point) {
-    vec2 cell = floor(point);
-    vec2 local = fract(point);
-    local = local * local * (3.0 - 2.0 * local);
-    float cornerA = meadowHash(cell);
-    float cornerB = meadowHash(cell + vec2(1.0, 0.0));
-    float cornerC = meadowHash(cell + vec2(0.0, 1.0));
-    float cornerD = meadowHash(cell + vec2(1.0, 1.0));
-    return mix(
-      mix(cornerA, cornerB, local.x),
-      mix(cornerC, cornerD, local.x),
-      local.y
-    );
-  }
-
+  ${cloudFieldChunk}
   float cloudShadowFactor(vec2 worldXZ, vec2 drift, float cover) {
-    vec2 sampled = worldXZ * 0.055 + drift;
-    float value =
-      meadowNoise(sampled) * 0.62 +
-      meadowNoise(sampled * 2.7 + vec2(13.7, -8.1)) * 0.38;
-    float threshold = 0.86 - cover * 0.5;
-    return smoothstep(threshold, threshold + 0.24, value);
+    return cloudDensity(worldXZ, drift, cover);
   }
 `
-
 export const grassVertexShader = /* glsl */ `
   attribute vec3 instanceOffset;
   attribute float instanceScale;
@@ -154,6 +132,7 @@ export const grassFragmentShader = /* glsl */ `
   uniform float uSunIntensity;
   uniform float uMoonIntensity;
   uniform float uStormFlash;
+  uniform float uCloudPhase;
   uniform sampler2D uGrassColorAtlas;
   uniform sampler2D uGrassSurfaceAtlas;
   uniform float uUseAtlas;
@@ -220,7 +199,7 @@ export const grassFragmentShader = /* glsl */ `
       uMoonColor * moonFacing * uMoonIntensity * 0.6;
     float cloudShade = cloudShadowFactor(
       vWorldXZ,
-      uWindDirection * uTime * 0.02,
+      uWindDirection * uCloudPhase,
       uShadowCover
     );
     light *= 1.0 - cloudShade * uShadowStrength * 0.42;

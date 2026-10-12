@@ -10,6 +10,41 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+test('persists advanced scene preferences and supports keyboard tabs', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  const open = async () => {
+    await page.getByRole('button', { name: 'Environment settings' }).click()
+    await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+  }
+  await open()
+  await page.getByRole('tab', { name: 'Sound', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Scene', exact: true })).toBeFocused()
+  await page.getByRole('slider', { name: 'Flower density' }).fill('0')
+  await page.getByRole('switch', { name: /Shooting stars/ }).uncheck()
+  await page.getByRole('switch', { name: /Lightning flashes/ }).uncheck()
+  await page.getByRole('slider', { name: 'Rain & snow particles' }).fill('0')
+  await page.getByRole('slider', { name: 'Star brightness' }).fill('0')
+  await page.getByRole('switch', { name: /Gentler motion/ }).check()
+  await page.getByRole('button', { name: 'Close advanced settings' }).click()
+  await expect(page.getByRole('button', { name: 'Environment settings' })).toBeFocused()
+  await page.reload()
+  await open()
+  await page.getByRole('tab', { name: 'Scene', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Flower density' })).toHaveValue('0')
+  await expect(page.getByRole('switch', { name: /Shooting stars/ })).not.toBeChecked()
+  await expect(page.getByRole('switch', { name: /Gentler motion/ })).toBeChecked()
+  await page.getByRole('button', { name: 'Reset scene' }).click()
+  await expect(page.getByRole('slider', { name: 'Flower density' })).toHaveValue('33')
+  await expect(page.getByRole('switch', { name: /Lightning flashes/ })).toBeChecked()
+  await page.getByRole('tab', { name: 'Sound', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Cow', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  expect(errors).toEqual([])
+})
+
 test('loads the meadow and toggles ambience without page errors', async ({
   page,
 }) => {
@@ -343,7 +378,7 @@ test('renders a deterministic shooting-star trail inside the real canvas', async
   page,
 }, testInfo) => {
   test.slow()
-  const forcedElapsed = 96.08
+  const forcedElapsed = 118.2190851862193
   const state = getShootingStarState(forcedElapsed, 731, 1, 1)
   const trail = projectShootingStarTrail(state, false)
   expect(state.active).toBe(true)
@@ -439,4 +474,25 @@ test('renders a deterministic shooting-star trail inside the real canvas', async
   )
 
   expect(evidence.hits, JSON.stringify(evidence.samples)).toBeGreaterThanOrEqual(4)
+})
+
+test('clears winter snow when changing to autumn even after rapid season retargeting', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('living-meadow:environment', JSON.stringify({ mode: 'manual', dayPhase: .5, seasonIndex: 3, weather: 'rain' }))
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => {
+    const effects = (window as Window & { __livingMeadowEffects?: { snowCover: number } }).__livingMeadowEffects
+    return effects && effects.snowCover > .7
+  })
+  await page.getByRole('button', { name: 'Environment settings' }).click()
+  await page.getByRole('radio', { name: 'Autumn', exact: true }).check()
+  await page.waitForFunction(() => (window as Window & { __livingMeadowEffects?: { snowCover: number } }).__livingMeadowEffects?.snowCover === 0)
+  await page.getByRole('radio', { name: 'Winter', exact: true }).check()
+  await page.waitForTimeout(400)
+  await page.getByRole('radio', { name: 'Summer', exact: true }).check()
+  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'Autumn', exact: true }).check()
+  await page.waitForFunction(() => (window as Window & { __livingMeadowEffects?: { snowCover: number } }).__livingMeadowEffects?.snowCover === 0)
+  await expect(page.getByRole('radio', { name: 'Autumn', exact: true })).toBeChecked()
 })

@@ -85,11 +85,37 @@ beforeEach(() => {
 })
 
 describe('App', () => {
+  it('switches advanced tabs, saves scene preferences independently and restores defaults', async () => {
+    const { unmount } = render(<App />)
+    const open = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Environment settings' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      await screen.findByRole('dialog', { name: 'Advanced settings' })
+    }
+    await open()
+    const sound = screen.getByRole('tab', { name: 'Sound' })
+    fireEvent.keyDown(sound, { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'Scene' })).toHaveFocus()
+    expect(screen.queryByRole('slider', { name: 'Cow' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('slider', { name: 'Flower density' }), { target: { value: '75' } })
+    fireEvent.click(screen.getByRole('switch', { name: /Shooting stars/ }))
+    expect(JSON.parse(localStorage.getItem('living-meadow:scene')!)).toMatchObject({ flowerDensity: .75, shootingStars: false })
+    expect(localStorage.getItem('living-meadow:audio')).toBeNull()
+    unmount()
+    render(<App />)
+    await open()
+    fireEvent.click(screen.getByRole('tab', { name: 'Scene' }))
+    expect(screen.getByRole('slider', { name: 'Flower density' })).toHaveValue('75')
+    expect(screen.getByRole('switch', { name: /Shooting stars/ })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset scene' }))
+    expect(screen.getByRole('slider', { name: 'Flower density' })).toHaveValue('33')
+    expect(screen.getByRole('switch', { name: /Shooting stars/ })).toBeChecked()
+  })
   it('persists individual audio levels and shares master volume between controls', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Environment settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
-    const dialog = screen.getByRole('dialog', { name: 'Sound mix' })
+    const dialog = await screen.findByRole('dialog', { name: 'Advanced settings' })
     expect(dialog).toBeVisible()
     fireEvent.change(within(dialog).getByRole('slider', { name: 'Master volume' }), { target: { value: '55' } })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Turn sound off' })).toBeInTheDocument())
@@ -102,7 +128,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset levels' }))
     expect(JSON.parse(localStorage.getItem('living-meadow:audio') ?? '').channels.cow).toBe(1)
     fireEvent.click(screen.getByRole('button', { name: 'Close advanced settings' }))
-    expect(screen.queryByRole('dialog', { name: 'Sound mix' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Advanced settings' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Environment settings' })).toHaveFocus()
   })
   it('unmutes when increasing volume, shows zero on mute, and restores volume on unmute', async () => {

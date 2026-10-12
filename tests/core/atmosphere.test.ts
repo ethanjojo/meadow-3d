@@ -26,6 +26,30 @@ function sampleAtDayPhase(dayPhase: number, weather: WeatherPreset = 'clear') {
 }
 
 describe('getAtmosphere', () => {
+  it('warms low morning and evening sunlight while leaving noon and night unchanged', () => {
+    const morning = sampleAtDayPhase(0.28)
+    const evening = sampleAtDayPhase(0.72)
+    const noon = sampleAtDayPhase(0.5)
+    const night = sampleAtDayPhase(0)
+    expect(morning.goldenHour).toBeGreaterThan(0.85)
+    expect(evening.goldenHour).toBeCloseTo(morning.goldenHour)
+    expect(noon.goldenHour).toBe(0)
+    expect(night.goldenHour).toBe(0)
+    expect(evening.sunColor.b / evening.sunColor.r).toBeLessThan(noon.sunColor.b / noon.sunColor.r * 0.6)
+    expect(evening.skyHorizon.r / evening.skyHorizon.b).toBeGreaterThan(noon.skyHorizon.r / noon.skyHorizon.b * 2)
+    expect(evening.skyLightIntensity).toBeLessThan(noon.skyLightIntensity)
+  })
+
+  it('attenuates golden hour under storm and fog and changes warmth continuously', () => {
+    const clear = sampleAtDayPhase(0.72)
+    expect(sampleAtDayPhase(0.72, 'storm').goldenHour).toBeLessThan(clear.goldenHour * 0.5)
+    expect(sampleAtDayPhase(0.72, 'fog').goldenHour).toBeLessThan(clear.goldenHour * 0.5)
+    const before = sampleAtDayPhase(0.6929)
+    const after = sampleAtDayPhase(0.6931)
+    expect(Math.abs(before.sunColor.b - after.sunColor.b)).toBeLessThan(0.01)
+    const blended = blendAtmosphere(clear, sampleAtDayPhase(0.5), 0.5, sampleAtDayPhase(0))
+    expect(blended.goldenHour).toBeCloseTo(clear.goldenHour * 0.5)
+  })
   it('places the sun highest at noon and reveals stars at midnight', () => {
     const midnight = sampleAtDayPhase(0)
     const dawn = sampleAtDayPhase(0.25)

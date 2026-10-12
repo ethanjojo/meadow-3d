@@ -114,7 +114,7 @@ describe('celestial state', () => {
   })
 
   it('projects shooting-star trails into the visible sky volume', () => {
-    const state = getShootingStarState(96.08, 731, 1, 1)
+    const state = getShootingStarState(118.2190851862193, 731, 1, 1)
     const trail = projectShootingStarTrail(state, false)
 
     expect(state.active).toBe(true)
@@ -142,7 +142,7 @@ describe('celestial state', () => {
     const states: ShootingStarState[] = []
     let lastWindow = -1
     for (let elapsed = 0; elapsed < 15_000 && states.length < 100; elapsed += 0.1) {
-      const window = Math.floor(elapsed / 82.5)
+      const window = Math.floor(elapsed / 95)
       if (window === lastWindow) continue
 
       for (let slot = 0; slot < 3; slot += 1) {
@@ -166,7 +166,7 @@ describe('celestial state', () => {
     }
   })
 
-  it('shares one 45-to-120-second event timeline across the production pool', () => {
+  it('shares an irregular primary timeline with rare separated secondary meteors', () => {
     const starts: Array<{ slot: number; time: number }> = []
     const previousActive = [false, false, false]
     let maximumConcurrent = 0
@@ -185,10 +185,10 @@ describe('celestial state', () => {
       maximumConcurrent = Math.max(maximumConcurrent, concurrent)
     }
 
-    const gaps = starts.slice(1).map((event, index) => event.time - starts[index].time)
+    const gaps = starts.slice(1).map((event, index) => event.time - starts[index].time).filter(gap => gap > 10)
     expect(maximumConcurrent).toBe(1)
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(44.8)
-    expect(Math.max(...gaps)).toBeLessThanOrEqual(120.2)
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(51.8)
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(138.2)
     expect(new Set(starts.map((event) => event.slot))).toEqual(new Set([0, 1, 2]))
   })
 })

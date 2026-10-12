@@ -188,7 +188,7 @@ describe('layered grass layout', () => {
     expect(grassFragmentShader).toContain('uniform float uShadowCover')
     expect(grassFragmentShader).toContain('uniform float uShadowStrength')
     expect(grassFragmentShader).toContain(
-      'cloudShadowFactor(\n      vWorldXZ,\n      uWindDirection * uTime * 0.02,\n      uShadowCover\n    )',
+      'cloudShadowFactor(\n      vWorldXZ,\n      uWindDirection * uCloudPhase,\n      uShadowCover\n    )',
     )
   })
 
