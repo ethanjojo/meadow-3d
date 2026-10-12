@@ -7,6 +7,7 @@ import { EnvironmentSettings } from './components/EnvironmentSettings'
 import { SoundToggle } from './components/SoundToggle'
 import { StaticFallback } from './components/StaticFallback'
 import { QUALITY_PROFILES } from './core/quality'
+import { parseAudioSettings, type AudioChannelId, type AudioPreviewState, type AudioSettings } from './core/audioSettings'
 import {
   DEFAULT_SIMULATION_SETTINGS,
   parseSimulationSettings,
@@ -21,6 +22,7 @@ import { NatureScene } from './scene/NatureScene'
 import './styles.css'
 
 const ENVIRONMENT_STORAGE_KEY = 'living-meadow:environment'
+const AUDIO_STORAGE_KEY = 'living-meadow:audio'
 
 interface VisibleTransitionSample {
   snapshot: EnvironmentSnapshot
@@ -54,6 +56,17 @@ function getInitialSimulationSettings(): SimulationSettings {
 export function App() {
   const visible = usePageVisibility()
   const [soundEnabled, setSoundEnabled] = useState(false)
+  const [audioSettings, setAudioSettings] = useState(() => {
+    try { return parseAudioSettings(JSON.parse(localStorage.getItem(AUDIO_STORAGE_KEY) ?? 'null')) }
+    catch { return parseAudioSettings(null) }
+  })
+  const audioSettingsRef = useRef(audioSettings)
+  const lastAudibleVolumeRef = useRef(audioSettings.master > 0 ? audioSettings.master : 1)
+  const soundIntentRef = useRef(false)
+  const soundRevisionRef = useRef(0)
+  const [preview, setPreview] = useState<AudioPreviewState>(null)
+  const previewIdRef = useRef<AudioChannelId | null>(null)
+  const previewRequestRef = useRef(0)
   const [simulationSettings, setSimulationSettings] = useState(
     getInitialSimulationSettings,
   )
@@ -77,20 +90,66 @@ export function App() {
   const { tier: qualityTier, recordFrame } = useAdaptiveQuality(capabilities)
   const quality = QUALITY_PROFILES[qualityTier]
 
+  const handleAudioChange = useCallback((value: AudioSettings) => {
+    const next = parseAudioSettings(value)
+    audioSettingsRef.current = next
+    if (next.master > 0) lastAudibleVolumeRef.current = next.master
+    setAudioSettings(next)
+    audioRef.current?.setAudioSettings(next)
+    try { localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(next)) }
+    catch { /* The current session remains usable when storage is unavailable. */ }
+  }, [])
+
+  const handleStopPreview = useCallback(() => {
+    previewRequestRef.current++
+    previewIdRef.current = null
+    audioRef.current?.stopPreview()
+    setPreview(null)
+  }, [])
+
   const handleSoundChange = useCallback(async (enabled: boolean) => {
+    const revision = ++soundRevisionRef.current
+    soundIntentRef.current = enabled
     if (!enabled) {
-      await audioRef.current?.suspend()
+      handleStopPreview()
       setSoundEnabled(false)
-      localStorage.setItem('living-meadow:sound', 'muted')
+      await audioRef.current?.suspend()
       return
     }
-
-    const controller = audioRef.current ?? createAmbientAudio()
+    if (audioSettingsRef.current.master === 0) handleAudioChange({ ...audioSettingsRef.current, master: lastAudibleVolumeRef.current })
+    const controller = audioRef.current ?? createAmbientAudio(audioSettingsRef.current)
     audioRef.current = controller
     const started = await controller.start()
+    if (revision !== soundRevisionRef.current) {
+      if (!soundIntentRef.current) await controller.suspend()
+      return
+    }
+    soundIntentRef.current = started
     setSoundEnabled(started)
-    localStorage.setItem('living-meadow:sound', started ? 'enabled' : 'muted')
-  }, [])
+  }, [handleAudioChange, handleStopPreview])
+
+  const handleMasterVolumeChange = useCallback((master: number) => {
+    handleAudioChange({ ...audioSettingsRef.current, master })
+    if (master === 0) void handleSoundChange(false)
+    else if (!soundIntentRef.current) void handleSoundChange(true)
+  }, [handleAudioChange, handleSoundChange])
+
+  const handlePreview = useCallback(async (id: AudioChannelId) => {
+    if (previewIdRef.current === id) { handleStopPreview(); return }
+    const request = ++previewRequestRef.current
+    previewIdRef.current = id
+    setPreview({ id, status: 'loading' })
+    const controller = audioRef.current ?? createAmbientAudio(audioSettingsRef.current)
+    audioRef.current = controller
+    const started = await controller.preview(id, () => {
+      if (request !== previewRequestRef.current) return
+      previewIdRef.current = null
+      setPreview(null)
+    })
+    if (request !== previewRequestRef.current) return
+    setPreview({ id, status: started ? 'playing' : 'error' })
+    if (!started) previewIdRef.current = null
+  }, [handleStopPreview])
 
   const handleNatureSample = useCallback(
     (frame: EnvironmentTransitionFrame) => {
@@ -118,9 +177,10 @@ export function App() {
   )
 
   useEffect(() => {
-    if (!audioRef.current || !soundEnabled) return
-    void (visible ? audioRef.current.resume() : audioRef.current.suspend())
-  }, [soundEnabled, visible])
+    if (!audioRef.current) return
+    if (!visible) { handleStopPreview(); void audioRef.current.suspend() }
+    else if (soundEnabled) void audioRef.current.resume()
+  }, [soundEnabled, visible, handleStopPreview])
 
   useEffect(
     () => () => {
@@ -178,8 +238,17 @@ export function App() {
             value={simulationSettings}
             visibleSnapshot={visibleFrame?.snapshot}
             onChange={handleSimulationSettingsChange}
+            audioSettings={audioSettings}
+            soundEnabled={soundEnabled}
+            onAudioChange={handleAudioChange}
+            onSoundChange={handleSoundChange}
+            onMasterVolumeChange={handleMasterVolumeChange}
+            preview={preview}
+            onPreview={handlePreview}
+            onStopPreview={handleStopPreview}
           />
-          <SoundToggle enabled={soundEnabled} onChange={handleSoundChange} />
+          <SoundToggle enabled={soundEnabled} onChange={handleSoundChange} volume={audioSettings.master}
+            onVolumeChange={handleMasterVolumeChange} />
         </div>
       ) : null}
     </main>

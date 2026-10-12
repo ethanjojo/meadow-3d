@@ -1,6 +1,11 @@
+import { VolumeSlider } from './VolumeSlider'
+import { useRef } from 'react'
+
 interface SoundToggleProps {
   enabled: boolean
   onChange: (enabled: boolean) => void
+  volume: number
+  onVolumeChange: (volume: number) => void
 }
 
 function SoundIcon({ enabled }: { enabled: boolean }) {
@@ -8,8 +13,8 @@ function SoundIcon({ enabled }: { enabled: boolean }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      width="18"
-      height="18"
+      width="20"
+      height="20"
       fill="none"
     >
       <path
@@ -28,19 +33,33 @@ function SoundIcon({ enabled }: { enabled: boolean }) {
   )
 }
 
-export function SoundToggle({ enabled, onChange }: SoundToggleProps) {
+export function SoundToggle({ enabled, onChange, volume, onVolumeChange }: SoundToggleProps) {
   const label = enabled ? 'Turn sound off' : 'Turn sound on'
+  const pointerFocusRef = useRef(false)
 
   return (
-    <button
-      className="sound-toggle"
-      type="button"
-      aria-label={label}
-      aria-pressed={enabled}
-      onClick={() => onChange(!enabled)}
-    >
-      <SoundIcon enabled={enabled} />
-      <span>{enabled ? 'Sound on' : 'Sound off'}</span>
-    </button>
+    <div className="sound-control"
+      onPointerDownCapture={event => { pointerFocusRef.current = event.pointerType === 'mouse' }}
+      onKeyDownCapture={() => { pointerFocusRef.current = false }}
+      onPointerLeave={event => {
+        const focused = document.activeElement
+        if (event.pointerType === 'mouse' && pointerFocusRef.current && focused instanceof HTMLElement && event.currentTarget.contains(focused)) {
+          focused.blur()
+        }
+        pointerFocusRef.current = false
+      }}>
+      <div className="sound-volume-controls">
+        <VolumeSlider label="Master volume" value={enabled ? volume : 0} onChange={onVolumeChange} vertical />
+      </div>
+      <button
+        className="sound-toggle"
+        type="button"
+        aria-label={label}
+        aria-pressed={enabled}
+        onClick={() => onChange(!enabled)}
+      >
+        <SoundIcon enabled={enabled && volume > 0} />
+      </button>
+    </div>
   )
 }

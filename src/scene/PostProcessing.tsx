@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { Vector2 } from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import type { QualityProfile } from '../core/quality'
@@ -20,6 +21,7 @@ export function PostProcessing({ quality }: PostProcessingProps) {
     let composer: EffectComposer | null = null
     let bloomPass: UnrealBloomPass | null = null
     let gradePass: ShaderPass | null = null
+    let outputPass: OutputPass | null = null
 
     try {
       composer = new EffectComposer(gl)
@@ -35,6 +37,8 @@ export function PostProcessing({ quality }: PostProcessingProps) {
       composer.addPass(renderPass)
       composer.addPass(bloomPass)
       composer.addPass(gradePass)
+      outputPass = new OutputPass()
+      composer.addPass(outputPass)
       composerRef.current = composer
     } catch (error) {
       if (import.meta.env.DEV) {
@@ -42,6 +46,7 @@ export function PostProcessing({ quality }: PostProcessingProps) {
       }
       bloomPass?.dispose()
       gradePass?.dispose()
+      outputPass?.dispose()
       composer?.dispose()
       composerRef.current = null
     }
@@ -50,6 +55,7 @@ export function PostProcessing({ quality }: PostProcessingProps) {
       composerRef.current = null
       bloomPass?.dispose()
       gradePass?.dispose()
+      outputPass?.dispose()
       composer?.dispose()
     }
   }, [camera, gl, quality.bloomStrength, quality.vignetteStrength, scene])

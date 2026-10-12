@@ -1,4 +1,5 @@
 import { valueNoise } from './noise'
+import { isFarmYard } from './farm'
 
 export interface GrassLayout {
   offsets: Float32Array
@@ -149,15 +150,19 @@ interface BandPoint {
 function sampleBandPoint(kind: GrassLayerKind, random: () => number): BandPoint {
   const band = LAYER_BANDS[kind]
   const depthBias = DEPTH_BIAS_EXPONENTS[kind]
-  const depthProgress = random() ** depthBias
-  const z = band.near + (band.far - band.near) * depthProgress
-  const halfWidth =
-    band.nearHalfWidth +
-    (band.farHalfWidth - band.nearHalfWidth) * depthProgress
-  const circleHalfWidth = Math.sqrt(
-    Math.max(0, GRASS_MEADOW_RADIUS * GRASS_MEADOW_RADIUS - z * z),
-  )
-  const x = (random() * 2 - 1) * Math.min(halfWidth, circleHalfWidth)
+  let x: number
+  let z: number
+  do {
+    const depthProgress = random() ** depthBias
+    z = band.near + (band.far - band.near) * depthProgress
+    const halfWidth =
+      band.nearHalfWidth +
+      (band.farHalfWidth - band.nearHalfWidth) * depthProgress
+    const circleHalfWidth = Math.sqrt(
+      Math.max(0, GRASS_MEADOW_RADIUS * GRASS_MEADOW_RADIUS - z * z),
+    )
+    x = (random() * 2 - 1) * Math.min(halfWidth, circleHalfWidth)
+  } while (isFarmYard(x, z))
   return { x, y: terrainHeight(x, z), z }
 }
 

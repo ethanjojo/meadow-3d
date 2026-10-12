@@ -2,22 +2,28 @@ import type {
   EnvironmentSnapshot,
   EnvironmentTransitionFrame,
 } from '../core/simulation'
+import { createFarmAudio } from './farmAudio'
+import { createBirdAudio, deriveBirdActivity } from './birdAudio'
+import { BIRD_CHANNELS, DEFAULT_AUDIO_SETTINGS, type AudioChannelId, type AudioSettings } from '../core/audioSettings'
+import { playVoice } from './playVoice'
 
 export interface AmbientAudioController {
   start: () => Promise<boolean>
   setNature: (frame: EnvironmentTransitionFrame) => void
+  setAudioSettings: (settings: AudioSettings) => void
+  preview: (id: AudioChannelId, onEnded: () => void) => Promise<boolean>
+  stopPreview: () => void
   suspend: () => Promise<void>
   resume: () => Promise<void>
   dispose: () => Promise<void>
 }
 
 export interface AmbientAudioMix {
-  chirpLayer: 'day' | 'night'
   windGain: number
   windFrequency: number
   rainGain: number
   dayGain: number
-  nightGain: number
+  birdGain: number
 }
 
 function clamp01(value: number) {
@@ -29,18 +35,13 @@ export function deriveAmbientAudioMix(
 ): AmbientAudioMix {
   const solarHeight = Math.sin(snapshot.dayPhase * Math.PI * 2 - Math.PI / 2)
   const day = clamp01(solarHeight * 1.8)
-  const night = clamp01(-solarHeight * 1.8)
 
   return {
-    chirpLayer: solarHeight > 0 ? 'day' : 'night',
     windGain: 0.012 + snapshot.weather.windStrength * 0.035,
     windFrequency: 420 + snapshot.weather.windStrength * 1_150,
     rainGain: snapshot.weather.rain * 0.032 + snapshot.weather.storm * 0.012,
     dayGain: day * (1 - snapshot.weather.rain * 0.58),
-    nightGain:
-      night *
-      (0.25 + snapshot.weather.fireflies * 0.75) *
-      (1 - snapshot.weather.rain * 0.82),
+    birdGain: deriveBirdActivity(snapshot.dayPhase, snapshot.weather.rain, snapshot.weather.storm),
   }
 }
 
@@ -51,14 +52,13 @@ function blendAmbientAudioMix(
 ): AmbientAudioMix {
   const blend = clamp01(amount)
   return {
-    chirpLayer: blend < 0.5 ? source.chirpLayer : target.chirpLayer,
     windGain: source.windGain + (target.windGain - source.windGain) * blend,
     windFrequency:
       source.windFrequency +
       (target.windFrequency - source.windFrequency) * blend,
     rainGain: source.rainGain + (target.rainGain - source.rainGain) * blend,
     dayGain: source.dayGain + (target.dayGain - source.dayGain) * blend,
-    nightGain: source.nightGain + (target.nightGain - source.nightGain) * blend,
+    birdGain: source.birdGain + (target.birdGain - source.birdGain) * blend,
   }
 }
 
@@ -75,44 +75,52 @@ export function deriveAmbientAudioMixFromFrame(
 type SafariWindow = Window & {
   webkitAudioContext?: typeof AudioContext
 }
+type AudioSessionType = 'auto' | 'playback' | 'transient' | 'transient-solo' | 'ambient' | 'play-and-record'
+type AudioSessionNavigator = Navigator & { audioSession?: { type: AudioSessionType } }
 
-export function createAmbientAudio(): AmbientAudioController {
+export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): AmbientAudioController {
+  let settings = initialSettings
   let context: AudioContext | null = null
+  let masterGain: GainNode | null = null
   let windSource: AudioBufferSourceNode | null = null
   let windFilter: BiquadFilterNode | null = null
   let windGain: GainNode | null = null
   let rainSource: AudioBufferSourceNode | null = null
   let rainFilter: BiquadFilterNode | null = null
   let rainGain: GainNode | null = null
-  let dayGain: GainNode | null = null
-  let nightGain: GainNode | null = null
   let lfo: OscillatorNode | null = null
-  let chirpTimer: number | null = null
-  let latestMix: AmbientAudioMix | null = null
   let frozenMix: AmbientAudioMix | null = null
   let lastAppliedMix: AmbientAudioMix | null = null
   let lastRevision = -1
+  let farm: ReturnType<typeof createFarmAudio> | null = null
+  let birds: ReturnType<typeof createBirdAudio> | null = null
+  let noiseBuffer: AudioBuffer | null = null
+  let ambientRunning = false
+  let previewRevision = 0
+  let cancelPreview: (() => void) | null = null
+  let previousSessionType: AudioSessionType | null = null
+  let activationRevision = 0
 
-  const createChirp = () => {
-    if (!context || context.state !== 'running' || !latestMix) return
+  const setPlaybackSession = (active: boolean) => {
+    const session = (navigator as AudioSessionNavigator).audioSession
+    if (!session) return
+    if (active) {
+      previousSessionType ??= session.type
+      session.type = 'playback'
+    } else if (previousSessionType !== null) {
+      session.type = previousSessionType
+      previousSessionType = null
+    }
+  }
 
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    const daylight = latestMix.chirpLayer === 'day'
-    const startTime = context.currentTime
-    oscillator.type = daylight ? 'sine' : 'triangle'
-    oscillator.frequency.setValueAtTime(daylight ? 2_400 : 4_800, startTime)
-    oscillator.frequency.exponentialRampToValueAtTime(
-      daylight ? 3_200 : 4_200,
-      startTime + 0.16,
-    )
-    gain.gain.setValueAtTime(0.0001, startTime)
-    gain.gain.exponentialRampToValueAtTime(daylight ? 0.012 : 0.004, startTime + 0.025)
-    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.22)
-    const chirpDestination = daylight ? dayGain : nightGain
-    oscillator.connect(gain).connect(chirpDestination ?? context.destination)
-    oscillator.start(startTime)
-    oscillator.stop(startTime + 0.24)
+  const stopPreview = () => {
+    previewRevision++
+    cancelPreview?.()
+    cancelPreview = null
+    if (!ambientRunning) {
+      if (context?.state === 'running') void context.suspend()
+      setPlaybackSession(false)
+    }
   }
 
   const initialize = () => {
@@ -121,7 +129,16 @@ export function createAmbientAudio(): AmbientAudioController {
     if (!AudioContextConstructor) return false
 
     context = new AudioContextConstructor()
-    const noiseBuffer = context.createBuffer(
+    masterGain = context.createGain()
+    masterGain.gain.value = 0
+    masterGain.connect(context.destination)
+    farm = createFarmAudio(context, masterGain)
+    birds = createBirdAudio(context, masterGain)
+    farm.setChannelVolumes(settings.channels)
+    birds.setChannelVolumes(settings.channels)
+    farm.setDayGain(lastAppliedMix?.dayGain ?? 0)
+    birds.setActivity(lastAppliedMix?.birdGain ?? 0)
+    noiseBuffer = context.createBuffer(
       1,
       context.sampleRate * 2,
       context.sampleRate,
@@ -137,8 +154,6 @@ export function createAmbientAudio(): AmbientAudioController {
     rainSource = context.createBufferSource()
     rainFilter = context.createBiquadFilter()
     rainGain = context.createGain()
-    dayGain = context.createGain()
-    nightGain = context.createGain()
     lfo = context.createOscillator()
     const lfoGain = context.createGain()
 
@@ -146,39 +161,102 @@ export function createAmbientAudio(): AmbientAudioController {
     windSource.loop = true
     windFilter.type = 'lowpass'
     windFilter.frequency.value = 720
-    windGain.gain.value = 0.022
+    windGain.gain.value = 0.022 * settings.channels.wind
     rainSource.buffer = noiseBuffer
     rainSource.loop = true
     rainFilter.type = 'highpass'
     rainFilter.frequency.value = 1_650
     rainGain.gain.value = 0
-    dayGain.gain.value = 1
-    nightGain.gain.value = 0
-    dayGain.connect(context.destination)
-    nightGain.connect(context.destination)
     lfo.frequency.value = 0.085
-    lfoGain.gain.value = 0.008
+    lfoGain.gain.value = 90
 
-    windSource.connect(windFilter).connect(windGain).connect(context.destination)
-    rainSource.connect(rainFilter).connect(rainGain).connect(context.destination)
-    lfo.connect(lfoGain).connect(windGain.gain)
+    windSource.connect(windFilter).connect(windGain).connect(masterGain)
+    rainSource.connect(rainFilter).connect(rainGain).connect(masterGain)
+    // Modulate the wind filter, so a zero wind level stays completely silent.
+    lfo.connect(lfoGain).connect(windFilter.frequency)
     windSource.start()
     rainSource.start()
     lfo.start()
-    chirpTimer = window.setInterval(createChirp, 4_600)
     return true
   }
 
+  const activateAmbience = async () => {
+    const revision = ++activationRevision
+    try {
+      if (!context && !initialize()) return false
+      // Select the media session before resume, still inside the tap handler.
+      setPlaybackSession(true)
+      await context?.resume()
+      if (revision !== activationRevision) return false
+      if (context?.state !== 'running') {
+        setPlaybackSession(false)
+        return false
+      }
+      ambientRunning = true
+      masterGain?.gain.setTargetAtTime(settings.master, context!.currentTime, 0.06)
+      void farm?.start()
+      void birds?.start()
+      return true
+    } catch {
+      if (revision === activationRevision) setPlaybackSession(false)
+      return false
+    }
+  }
+
   return {
-    async start() {
+    start: activateAmbience,
+
+    setAudioSettings(next) {
+      settings = next
+      if (!context) return
+      masterGain?.gain.setTargetAtTime(ambientRunning ? settings.master : 0, context.currentTime, 0.06)
+      farm?.setChannelVolumes(settings.channels)
+      birds?.setChannelVolumes(settings.channels)
+      windGain?.gain.setTargetAtTime((lastAppliedMix?.windGain ?? 0.022) * settings.channels.wind, context.currentTime, 0.06)
+      rainGain?.gain.setTargetAtTime((lastAppliedMix?.rainGain ?? 0) * settings.channels.rain, context.currentTime, 0.06)
+    },
+
+    async preview(id, onEnded) {
+      stopPreview()
+      const revision = previewRevision
       try {
         if (!context && !initialize()) return false
-        await context?.resume()
-        return context?.state === 'running'
+        const audio = context!
+        setPlaybackSession(true)
+        await audio.resume()
+        if (revision !== previewRevision) return false
+        if (audio.state !== 'running') {
+          if (!ambientRunning) setPlaybackSession(false)
+          return false
+        }
+        const finished = () => {
+          if (revision !== previewRevision) return
+          cancelPreview = null
+          if (!ambientRunning) {
+            void audio.suspend()
+            setPlaybackSession(false)
+          }
+          onEnded()
+        }
+        if (id === 'wind' || id === 'rain') {
+          cancelPreview = playVoice(audio, noiseBuffer!, { duration: 2, volume: 0.06, rate: 1, pan: 0, cutoff: id === 'wind' ? 720 : 1_650, filterType: id === 'wind' ? 'lowpass' : 'highpass' }, audio.destination, finished).stop
+        } else {
+          const player = BIRD_CHANNELS.some(channel => channel.id === id) ? birds : farm
+          const cancel = await player!.preview(id, () => revision === previewRevision, finished)
+          if (revision !== previewRevision) { cancel?.(); return false }
+          cancelPreview = cancel
+        }
+        if (!cancelPreview && revision === previewRevision && !ambientRunning) {
+          void audio.suspend()
+          setPlaybackSession(false)
+        }
+        return cancelPreview !== null && revision === previewRevision
       } catch {
+        if (revision === previewRevision && !ambientRunning) setPlaybackSession(false)
         return false
       }
     },
+    stopPreview,
 
     setNature(frame) {
       const sourceMix = deriveAmbientAudioMix(frame.source)
@@ -194,12 +272,13 @@ export function createAmbientAudio(): AmbientAudioController {
         targetMix,
         frame.progress,
       )
-      latestMix = mix
+      farm?.setDayGain(mix.dayGain)
+      birds?.setActivity(mix.birdGain)
       lastAppliedMix = mix
       if (!context || !windGain || !windFilter) return
       const now = context.currentTime
       windGain.gain.setTargetAtTime(
-        mix.windGain,
+        mix.windGain * settings.channels.wind,
         now,
         0.35,
       )
@@ -209,29 +288,34 @@ export function createAmbientAudio(): AmbientAudioController {
         0.45,
       )
       rainGain?.gain.setTargetAtTime(
-        mix.rainGain,
+        mix.rainGain * settings.channels.rain,
         now,
         0.28,
-      )
-      dayGain?.gain.setTargetAtTime(mix.dayGain, now, 0.5)
-      nightGain?.gain.setTargetAtTime(
-        mix.nightGain,
-        now,
-        0.5,
       )
     },
 
     async suspend() {
+      activationRevision++
+      ambientRunning = false
+      stopPreview()
+      masterGain?.gain.setValueAtTime(0, context?.currentTime ?? 0)
+      farm?.suspend()
+      birds?.suspend()
       if (context?.state === 'running') await context.suspend()
     },
 
     async resume() {
-      if (context?.state === 'suspended') await context.resume()
+      if (context && context.state !== 'closed') await activateAmbience()
     },
 
     async dispose() {
-      if (chirpTimer !== null) window.clearInterval(chirpTimer)
-      chirpTimer = null
+      activationRevision++
+      ambientRunning = false
+      stopPreview()
+      farm?.dispose()
+      farm = null
+      birds?.dispose()
+      birds = null
       try {
         windSource?.stop()
         rainSource?.stop()
@@ -245,12 +329,12 @@ export function createAmbientAudio(): AmbientAudioController {
       rainSource?.disconnect()
       rainFilter?.disconnect()
       rainGain?.disconnect()
-      dayGain?.disconnect()
-      nightGain?.disconnect()
+      masterGain?.disconnect()
       lfo?.disconnect()
       if (context && context.state !== 'closed') await context.close()
       context = null
-      latestMix = null
+      masterGain = null
+      noiseBuffer = null
       frozenMix = null
       lastAppliedMix = null
       lastRevision = -1

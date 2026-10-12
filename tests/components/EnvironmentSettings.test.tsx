@@ -2,10 +2,22 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvironmentSettings } from '../../src/components/EnvironmentSettings'
 import { sampleNatureClock } from '../../src/core/natureClock'
+import { DEFAULT_AUDIO_SETTINGS } from '../../src/core/audioSettings'
 import {
   createEnvironmentSnapshot,
   DEFAULT_SIMULATION_SETTINGS,
 } from '../../src/core/simulation'
+
+const audioProps = {
+  audioSettings: DEFAULT_AUDIO_SETTINGS,
+  soundEnabled: false,
+  onAudioChange: () => undefined,
+  onSoundChange: () => undefined,
+  onMasterVolumeChange: () => undefined,
+  preview: null,
+  onPreview: () => undefined,
+  onStopPreview: () => undefined,
+}
 
 function createVisibleWinterNoon() {
   const auto = sampleNatureClock(90)
@@ -27,7 +39,7 @@ describe('EnvironmentSettings', () => {
   it('opens, enables manual controls, and emits a weather choice', () => {
     const onChange = vi.fn()
     const { rerender } = render(
-      <EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={onChange} />,
+      <EnvironmentSettings {...audioProps} value={DEFAULT_SIMULATION_SETTINGS} onChange={onChange} />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
@@ -39,13 +51,13 @@ describe('EnvironmentSettings', () => {
     const manual = { ...DEFAULT_SIMULATION_SETTINGS, mode: 'manual' as const }
     expect(onChange).toHaveBeenLastCalledWith(manual)
 
-    rerender(<EnvironmentSettings value={manual} onChange={onChange} />)
+    rerender(<EnvironmentSettings {...audioProps} value={manual} onChange={onChange} />)
     fireEvent.click(screen.getByRole('radio', { name: /storm/i }))
     expect(onChange).toHaveBeenLastCalledWith({ ...manual, weather: 'storm' })
   })
 
   it('closes on Escape and restores focus to the trigger', () => {
-    render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
+    render(<EnvironmentSettings {...audioProps} value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
     const trigger = screen.getByRole('button', { name: /environment settings/i })
 
     fireEvent.click(trigger)
@@ -56,7 +68,7 @@ describe('EnvironmentSettings', () => {
   })
 
   it('moves focus into the dialog when it opens', () => {
-    render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
+    render(<EnvironmentSettings {...audioProps} value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
 
     fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
 
@@ -64,7 +76,7 @@ describe('EnvironmentSettings', () => {
   })
 
   it('closes when a visitor clicks outside the popover', () => {
-    render(<EnvironmentSettings value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
+    render(<EnvironmentSettings {...audioProps} value={DEFAULT_SIMULATION_SETTINGS} onChange={() => {}} />)
 
     fireEvent.click(screen.getByRole('button', { name: /environment settings/i }))
     fireEvent.pointerDown(document.body)
@@ -74,7 +86,7 @@ describe('EnvironmentSettings', () => {
 
   it('shows the throttled visible environment while Auto controls are disabled', () => {
     render(
-      <EnvironmentSettings
+      <EnvironmentSettings {...audioProps}
         value={DEFAULT_SIMULATION_SETTINGS}
         visibleSnapshot={createVisibleWinterNoon()}
         onChange={() => {}}
@@ -95,7 +107,7 @@ describe('EnvironmentSettings', () => {
   it('seeds Manual targets from the currently visible Auto environment', () => {
     const onChange = vi.fn()
     render(
-      <EnvironmentSettings
+      <EnvironmentSettings {...audioProps}
         value={DEFAULT_SIMULATION_SETTINGS}
         visibleSnapshot={createVisibleWinterNoon()}
         onChange={onChange}

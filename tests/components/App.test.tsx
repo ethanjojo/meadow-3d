@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/App'
 import type {
@@ -74,12 +74,52 @@ vi.mock('../../src/core/webgl', () => ({
   hasWebGLSupport: vi.fn(() => true),
 }))
 
+vi.mock('../../src/audio/ambientAudio', () => ({
+  createAmbientAudio: () => ({ start: vi.fn(async () => true), suspend: vi.fn(async () => {}), resume: vi.fn(async () => {}), dispose: vi.fn(async () => {}),
+    setAudioSettings: vi.fn(), setNature: vi.fn(), preview: vi.fn(async () => true), stopPreview: vi.fn() }),
+}))
+
 beforeEach(() => {
   vi.mocked(hasWebGLSupport).mockReturnValue(true)
   localStorage.clear()
 })
 
 describe('App', () => {
+  it('persists individual audio levels and shares master volume between controls', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Environment settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+    const dialog = screen.getByRole('dialog', { name: 'Sound mix' })
+    expect(dialog).toBeVisible()
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'Master volume' }), { target: { value: '55' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Turn sound off' })).toBeInTheDocument())
+    fireEvent.change(screen.getByRole('slider', { name: 'Cow' }), { target: { value: '20' } })
+    const settings = JSON.parse(localStorage.getItem('living-meadow:audio') ?? '')
+    expect(settings.master).toBe(0.55)
+    expect(settings.channels.cow).toBe(0.2)
+    expect(settings.channels.dog).toBe(1)
+    expect(within(screen.getByRole('button', { name: 'Turn sound off' }).parentElement!).getByLabelText('Master volume')).toHaveValue('55')
+    fireEvent.click(screen.getByRole('button', { name: 'Reset levels' }))
+    expect(JSON.parse(localStorage.getItem('living-meadow:audio') ?? '').channels.cow).toBe(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Close advanced settings' }))
+    expect(screen.queryByRole('dialog', { name: 'Sound mix' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Environment settings' })).toHaveFocus()
+  })
+  it('unmutes when increasing volume, shows zero on mute, and restores volume on unmute', async () => {
+    render(<App />)
+    const control = screen.getByRole('button', { name: 'Turn sound on' }).parentElement!
+    const slider = within(control).getByLabelText('Master volume')
+    expect(slider).toHaveValue('0')
+    fireEvent.change(slider, { target: { value: '40' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Turn sound off' })).toBeInTheDocument())
+    expect(slider).toHaveValue('40')
+    fireEvent.click(screen.getByRole('button', { name: 'Turn sound off' }))
+    expect(slider).toHaveValue('0')
+    fireEvent.click(screen.getByRole('button', { name: 'Turn sound on' }))
+    await waitFor(() => expect(slider).toHaveValue('40'))
+    fireEvent.change(slider, { target: { value: '0' } })
+    expect(screen.getByRole('button', { name: 'Turn sound on' })).toBeInTheDocument()
+  })
   it('renders a full-screen nature experience with an accessible title', () => {
     render(<App />)
 

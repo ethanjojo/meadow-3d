@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SeasonIndex } from '../core/natureClock'
+import type { AudioChannelId, AudioPreviewState, AudioSettings } from '../core/audioSettings'
+import { AdvancedAudioSettings } from './AdvancedAudioSettings'
 import type {
   EnvironmentSnapshot,
   SimulationSettings,
@@ -10,6 +12,14 @@ interface EnvironmentSettingsProps {
   value: SimulationSettings
   visibleSnapshot?: EnvironmentSnapshot | null
   onChange: (next: SimulationSettings) => void
+  audioSettings: AudioSettings
+  soundEnabled: boolean
+  onAudioChange: (next: AudioSettings) => void
+  onSoundChange: (enabled: boolean) => void
+  onMasterVolumeChange: (volume: number) => void
+  preview: AudioPreviewState
+  onPreview: (id: AudioChannelId) => void
+  onStopPreview: () => void
 }
 
 const SEASONS: readonly { value: SeasonIndex; label: string }[] = [
@@ -57,8 +67,17 @@ export function EnvironmentSettings({
   value,
   visibleSnapshot,
   onChange,
+  audioSettings,
+  soundEnabled,
+  onAudioChange,
+  onSoundChange,
+  onMasterVolumeChange,
+  preview,
+  onPreview,
+  onStopPreview,
 }: EnvironmentSettingsProps) {
   const [open, setOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const manual = value.mode === 'manual'
@@ -184,26 +203,28 @@ export function EnvironmentSettings({
             disabled={!manual}
             onChange={(weather) => update('weather', weather)}
           />
+            <button className="advanced-settings-trigger" type="button" onClick={() => { setOpen(false); setAdvancedOpen(true) }}>
+              <span>Advanced</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M7 7h10v10" /></svg>
+            </button>
         </section>
       ) : null}
+        <AdvancedAudioSettings open={advancedOpen} value={audioSettings} enabled={soundEnabled} onChange={onAudioChange} onSoundChange={onSoundChange}
+          onMasterVolumeChange={onMasterVolumeChange} preview={preview} onPreview={onPreview} onStopPreview={onStopPreview}
+          onClose={() => { setAdvancedOpen(false); triggerRef.current?.focus() }} />
     </div>
   )
 }
 
 function SettingsIcon() {
+  const points = Array.from({ length: 32 }, (_, index) => {
+    const angle = -Math.PI / 2 + (index + 0.5) * Math.PI / 16
+    const radius = index % 4 < 2 ? 9.5 : 7.5
+    return `${12 + Math.cos(angle) * radius},${12 + Math.sin(angle) * radius}`
+  }).join(' ')
   return (
-    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 8.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
-      <path
-        d="m19.35 13.35 1.1.85-1.85 3.2-1.3-.52a7.75 7.75 0 0 1-1.83 1.06l-.2 1.38h-3.7l-.2-1.38a7.75 7.75 0 0 1-1.83-1.06l-1.3.52-1.85-3.2 1.1-.85a7.43 7.43 0 0 1 0-2.12l-1.1-.85 1.85-3.2 1.3.52a7.75 7.75 0 0 1 1.83-1.06l.2-1.38h3.7l.2 1.38A7.75 7.75 0 0 1 17.3 7l1.3-.52 1.85 3.2-1.1.85a7.43 7.43 0 0 1 0 2.12Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.45"
-      />
+    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+      <polygon points={points} />
+      <circle cx="12" cy="12" r="3.1" />
     </svg>
   )
 }

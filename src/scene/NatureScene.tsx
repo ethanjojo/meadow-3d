@@ -19,6 +19,7 @@ import {
 import { blendWeatherEffects, deriveWeatherEffects } from '../core/weather'
 import { Atmosphere } from './Atmosphere'
 import { FixedCamera } from './FixedCamera'
+import { Farm } from './Farm'
 import { Meadow } from './Meadow'
 import { PostProcessing } from './PostProcessing'
 import { WeatherParticles } from './WeatherParticles'
@@ -331,6 +332,7 @@ export function NatureScene({
         reducedMotion={reducedMotion}
         visible={visible}
       />
+      <Farm atmosphereRef={atmosphereRef} />
       <FixedCamera />
       {quality.postprocessing ? <PostProcessing quality={quality} /> : null}
     </>
