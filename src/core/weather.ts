@@ -288,21 +288,10 @@ export function blendWeather(
   return result
 }
 
-export function getAutomaticWeather(
-  snapshot: NatureSnapshot,
-  season: SeasonAppearance,
+function getAutomaticRainWeather(
+  intensity: number,
   target?: WeatherState,
 ): WeatherState {
-  const intensity = clamp01(snapshot.weatherIntensity)
-
-  if (season.snowBias > season.rainBias) {
-    return blendWeather(
-      WEATHER_PROFILES.clear,
-      WEATHER_PROFILES.snow,
-      intensity,
-      target,
-    )
-  }
   if (intensity > 0.82) {
     return blendWeather(
       WEATHER_PROFILES.rain,
@@ -325,6 +314,27 @@ export function getAutomaticWeather(
     intensity / 0.56,
     target,
   )
+}
+
+const WEATHER_COMPONENTS = ['cloudCover', 'fog', 'rain', 'snow', 'storm', 'wetness', 'fireflies', 'dew', 'windStrength'] as const
+
+export function getAutomaticWeather(
+  snapshot: NatureSnapshot,
+  season: SeasonAppearance,
+  target?: WeatherState,
+): WeatherState {
+  const intensity = clamp01(snapshot.weatherIntensity)
+  const result = getAutomaticRainWeather(intensity, target)
+  const winter = smoothstep(-.02, .02, season.snowBias - season.rainBias)
+  if (winter === 0) return result
+  const clear = WEATHER_PROFILES.clear
+  const snow = WEATHER_PROFILES.snow
+  for (const key of WEATHER_COMPONENTS) result[key] = mix(result[key], mix(clear[key], snow[key], intensity), winter)
+  const direction = result.windDirection as [number, number]
+  direction[0] = mix(direction[0], mix(clear.windDirection[0], snow.windDirection[0], intensity), winter)
+  direction[1] = mix(direction[1], mix(clear.windDirection[1], snow.windDirection[1], intensity), winter)
+  if (winter > .5) result.preset = 'snow'
+  return result
 }
 
 export function getWeatherOpacity(

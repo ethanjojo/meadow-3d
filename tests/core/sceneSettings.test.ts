@@ -6,7 +6,9 @@ describe('scene preferences', () => {
     expect(parseSceneSettings(null)).toEqual(DEFAULT_SCENE_SETTINGS)
     expect(parseSceneSettings({ flowerDensity: -4, fireflyDensity: 7, starBrightness: NaN, shootingStars: 'false', lightning: false })).toMatchObject({
       flowerDensity: 0, fireflyDensity: 1, starBrightness: 1, shootingStars: true, lightning: false,
+      farmLights: true,
     })
+    expect(parseSceneSettings({ farmLights: false }).farmLights).toBe(false)
   })
   it('preserves the sparse default and bounded device-specific flower budgets', () => {
     expect(getFlowerCount(240, parseSceneSettings(null))).toBe(240)

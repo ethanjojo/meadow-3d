@@ -26,6 +26,7 @@ export function SceneSettingsPanel({ value, onChange }: { value: SceneSettings; 
     </div>
     <fieldset className="scene-settings-toggles"><legend>Effects & motion</legend>
       {([
+        ['farmLights', 'Farm lights', 'Warm window lights from around 18:30 to 21:00 in scene time.'],
         ['shootingStars', 'Shooting stars', 'Occasional meteors on clear nights.'],
         ['lightning', 'Lightning flashes', 'Visual flashes during storms. Thunder has its own sound level.'],
         ['gentleMotion', 'Gentler motion', 'Calmer wind movement and fewer animated effects. System motion preferences always take priority.'],

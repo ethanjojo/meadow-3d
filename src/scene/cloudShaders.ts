@@ -37,4 +37,8 @@ export const cloudFieldChunk = /* glsl */ `
     // A curved layer avoids aliasing and infinitely compressed bands at the horizon.
     return direction.xz * (36.0 / max(direction.y + 0.35, 0.25));
   }
+  float cloudLightEdge(vec2 point, float density, vec3 lightDirection, vec2 drift, float cover) {
+    // Unit celestial directions have no horizontal offset at zenith; do not normalize xz.
+    return max(0.0, density - cloudDensity(point + lightDirection.xz * 6.0, drift, cover));
+  }
 `

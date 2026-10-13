@@ -45,6 +45,10 @@ apply immediately and persist under `living-meadow:scene`; each tab has its own
 reset. Flower density defaults to 33% and is capped at three times the tier's
 sparse budget. Visual effect preferences do not modify the weather simulation,
 snow accumulation or audio levels. System reduced-motion preferences take priority.
+Farm windows glow in warm amber from about 18:30 to 21:00 in scene time. Each
+window has a staggered nine-minute fade, a subdued halo and a soft facade spill,
+including on low quality without bloom. Manual time selects the same schedule.
+The Farm lights switch in Scene settings enables or disables this routine.
 Plant bending and a slight delayed head sway follow the shared wind; thin petals
 transmit sunlight. Distant flowers and low quality use simpler geometry with the
 same lighting and silhouettes. Snow shrinks the plants with the existing seasonal
@@ -55,6 +59,12 @@ modulates vegetation, rain/snow drift, cloud movement and wind sound. Cloud
 shapes use clustered procedural puffs with darker bodies, light-facing edges,
 sunset tint and subdued moonlight. The same world-space density field drives
 cloud shadows and stellar/meteor occlusion; distant secondary layers add depth.
+Cloud lighting blends separate sun and moon contributions smoothly through
+twilight, avoiding direction flips or a sudden tint switch. Automatic rain/snow
+weather also crossfades across the seasonal boundary; manual changes retain the
+shared three-second environment transition.
+At noon and midnight, horizontal edge lighting fades to zero as the light
+passes overhead, instead of flipping sides at the zenith.
 All cloud consumers share one seeded 128×128 RGBA noise data texture, owned by
 the scene and disposed on unmount. Nearest sampling, ungraded data and complete
 neighbor coverage keep shapes stable across GPU implementations and cell seams.
@@ -63,7 +73,8 @@ avoiding undefined GLSL calculations in clouds, mist, precipitation and meteors.
 
 Cross-browser verification: run `npx playwright install chromium firefox webkit`
 then `npm run test:e2e -- tests/e2e/shader-portability.spec.ts`. The test renders
-the actual cloud field on the GPU at negative coordinates and texture seams in
+the actual cloud field on the GPU at negative coordinates, texture seams and
+both sides of the celestial zenith in
 Chromium desktop/mobile, Firefox and WebKit. Local tests use port 5175. Playwright
 WebKit is an additional check; actual Safari/macOS hardware still needs verification.
 

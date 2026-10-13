@@ -36,6 +36,15 @@ const season: SeasonAppearance = {
 }
 
 describe('getWeatherOpacity', () => {
+  it('crossfades automatic rain and snow at the seasonal boundary', () => {
+    const before = getAutomaticWeather(snapshot, { ...season, rainBias: .4, snowBias: .3999 })
+    const after = getAutomaticWeather(snapshot, { ...season, rainBias: .4, snowBias: .4001 })
+    for (const key of ['cloudCover', 'fog', 'rain', 'snow', 'windStrength'] as const) {
+      expect(Math.abs(after[key] - before[key])).toBeLessThan(.01)
+    }
+    expect(before.rain).toBeGreaterThan(0)
+    expect(before.snow).toBeGreaterThan(0)
+  })
   it('makes spring daylight favor pollen and rain over snow', () => {
     const opacity = getWeatherOpacity(snapshot, season)
     expect(opacity.pollen).toBeGreaterThan(0)

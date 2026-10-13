@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import { BackSide, Color, ShaderMaterial, Vector2, Vector3 } from 'three'
 import type { AtmosphereState } from '../core/atmosphere'
+import { getCloudSunWeight } from '../core/atmosphere'
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
@@ -25,8 +26,8 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
     uniforms: {
       uCloudNoise: { value: cloudNoise },
       uCover: { value: 0 }, uStorm: { value: 0 }, uFlash: { value: 0 }, uFlashX: { value: 0 },
-      uDrift: { value: new Vector2() }, uLight: { value: new Vector3() },
-      uColor: { value: new Color() }, uTint: { value: new Color() }, uDay: { value: 1 },
+      uDrift: { value: new Vector2() }, uSunDirection: { value: new Vector3(0, 1, 0) }, uMoonDirection: { value: new Vector3(0, -1, 0) },
+      uColor: { value: new Color() }, uSunTint: { value: new Color() }, uMoonTint: { value: new Color() }, uSunWeight: { value: 1 }, uDay: { value: 1 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDirection;
@@ -37,9 +38,9 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform float uCover, uStorm, uFlash, uFlashX, uDay;
+      uniform float uCover, uStorm, uFlash, uFlashX, uDay, uSunWeight;
       uniform vec2 uDrift;
-      uniform vec3 uLight, uColor, uTint;
+      uniform vec3 uSunDirection, uMoonDirection, uColor, uSunTint, uMoonTint;
       varying vec3 vDirection;
       ${cloudFieldChunk}
       void main() {
@@ -53,12 +54,17 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
         #if CLOUD_LAYERS > 2
           density = max(density, cloudDensity(p * 0.7 - 42.0, uDrift * 0.45, uCover * 0.8) * 0.25);
         #endif
-        float litEdge = max(0.0, density - cloudDensity(p + normalize(uLight.xz + vec2(0.0001)) * 6.0, uDrift, uCover));
+        float sunEdge = 0.0, moonEdge = 0.0;
+        if (uSunWeight > 0.0) sunEdge = cloudLightEdge(p, density, uSunDirection, uDrift, uCover);
+        if (uSunWeight < 1.0) moonEdge = cloudLightEdge(p, density, uMoonDirection, uDrift, uCover);
         float thickness = smoothstep(0.2, 1.0, density);
         vec3 base = uColor * mix(1.06, 0.52 - uStorm * 0.16, thickness);
-        base += uTint * litEdge * (0.08 + 0.55 * uDay) * (1.0 - uStorm * 0.7);
-        float silver = pow(max(dot(ray, normalize(uLight)), 0.0), 12.0);
-        base += uTint * silver * (1.0 - thickness) * (0.04 + uDay * 0.24);
+        vec3 edgeTint = uSunTint * sunEdge * uSunWeight + uMoonTint * moonEdge * (1.0 - uSunWeight);
+        base += edgeTint * (0.08 + 0.55 * uDay) * (1.0 - uStorm * 0.7);
+        float sunSilver = pow(max(dot(ray, normalize(uSunDirection)), 0.0), 12.0);
+        float moonSilver = pow(max(dot(ray, normalize(uMoonDirection)), 0.0), 12.0);
+        vec3 silverTint = uSunTint * sunSilver * uSunWeight + uMoonTint * moonSilver * (1.0 - uSunWeight);
+        base += silverTint * (1.0 - thickness) * (0.04 + uDay * 0.24);
         float flashDistance = (ray.x - uFlashX * .55) * 3.5;
         float localFlash = exp(-flashDistance * flashDistance);
         base += vec3(0.65, 0.76, 1.0) * uFlash * (.18 + localFlash * .82);
@@ -81,9 +87,12 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
     material.uniforms.uFlashX.value = getStormEvent(snapshotRef.current.elapsed).x
     material.uniforms.uDay.value = day
     material.uniforms.uDrift.value.set(...weather.windDirection).normalize().multiplyScalar(state.cloudPhase)
-    material.uniforms.uLight.value.set(...(day > .15 ? state.celestial.sun.direction : state.celestial.moon.direction))
+    material.uniforms.uSunWeight.value = getCloudSunWeight(state.sunElevation)
+    material.uniforms.uSunDirection.value.set(...state.celestial.sun.direction)
+    material.uniforms.uMoonDirection.value.set(...state.celestial.moon.direction)
     material.uniforms.uColor.value.copy(state.skyLightColor).multiplyScalar(.18 + day * 1.05)
-    material.uniforms.uTint.value.copy(day > .15 ? state.sunColor : state.moonColor)
+    material.uniforms.uSunTint.value.copy(state.sunColor)
+    material.uniforms.uMoonTint.value.copy(state.moonColor)
   })
   return <mesh name="cloud-sky" renderOrder={3} scale={103} material={material} frustumCulled={false}><sphereGeometry args={[1, 40, 20]} /></mesh>
 }

@@ -59,6 +59,25 @@ function blendDirection(
   output[0] = mix(source[0], target[0], amount)
   output[1] = mix(source[1], target[1], amount)
   output[2] = mix(source[2], target[2], amount)
+  const dot = clamp(source[0] * target[0] + source[1] * target[1] + source[2] * target[2], -1, 1)
+  if (dot < .9995) {
+    let x = target[0] - source[0] * dot
+    let y = target[1] - source[1] * dot
+    let z = target[2] - source[2] * dot
+    let perpendicularLength = Math.hypot(x, y, z)
+    if (perpendicularLength < 1e-6) {
+      // Opposite lights need an explicit arc instead of crossing a zero vector.
+      if (Math.abs(source[2]) < .9) { x = source[1]; y = -source[0]; z = 0 }
+      else { x = -source[2]; y = 0; z = source[0] }
+      perpendicularLength = Math.hypot(x, y, z)
+    }
+    const angle = Math.acos(dot) * amount
+    const along = Math.cos(angle)
+    const across = Math.sin(angle) / perpendicularLength
+    output[0] = source[0] * along + x * across
+    output[1] = source[1] * along + y * across
+    output[2] = source[2] * along + z * across
+  }
   let length = Math.hypot(output[0], output[1], output[2])
   if (length < 1e-6) {
     output[0] = source[0]
@@ -91,6 +110,11 @@ export function advanceCloudPhase(
     : 0
   const safeSpeed = Number.isFinite(speed) ? Math.max(0, speed) : 0
   return safePhase + safeDelta * safeSpeed
+}
+
+/** Both lights contribute through twilight; never interpolate opposite directions. */
+export function getCloudSunWeight(sunElevation: number) {
+  return smoothstep(-0.18, 0.12, sunElevation)
 }
 
 export function getAtmosphere(

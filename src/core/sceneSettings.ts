@@ -8,6 +8,7 @@ export interface SceneSettings {
   shootingStars: boolean
   lightning: boolean
   gentleMotion: boolean
+  farmLights: boolean
 }
 
 export const DEFAULT_SCENE_SETTINGS: Readonly<SceneSettings> = {
@@ -18,6 +19,7 @@ export const DEFAULT_SCENE_SETTINGS: Readonly<SceneSettings> = {
   shootingStars: true,
   lightning: true,
   gentleMotion: false,
+  farmLights: true,
 }
 
 export function parseSceneSettings(value: unknown): SceneSettings {
@@ -30,6 +32,7 @@ export function parseSceneSettings(value: unknown): SceneSettings {
     flowerDensity: number('flowerDensity'), fireflyDensity: number('fireflyDensity'),
     precipitationDensity: number('precipitationDensity'), starBrightness: number('starBrightness'),
     shootingStars: boolean('shootingStars'), lightning: boolean('lightning'), gentleMotion: boolean('gentleMotion'),
+    farmLights: boolean('farmLights'),
   }
 }
 

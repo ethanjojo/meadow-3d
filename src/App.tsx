@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ACESFilmicToneMapping } from 'three'
 import { createAmbientAudio, type AmbientAudioController } from './audio/ambientAudio'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary'
@@ -19,8 +19,9 @@ import {
 import { hasWebGLSupport } from './core/webgl'
 import { useAdaptiveQuality } from './hooks/useAdaptiveQuality'
 import { usePageVisibility } from './hooks/usePageVisibility'
-import { NatureScene } from './scene/NatureScene'
 import './styles.css'
+
+const NatureScene = lazy(() => import('./scene/NatureScene').then(module => ({ default: module.NatureScene })))
 
 const ENVIRONMENT_STORAGE_KEY = 'living-meadow:environment'
 const AUDIO_STORAGE_KEY = 'living-meadow:audio'

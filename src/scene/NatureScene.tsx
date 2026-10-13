@@ -28,6 +28,7 @@ import { WeatherParticles } from './WeatherParticles'
 import { GroundMist } from './GroundMist'
 import { CloudNoiseProvider } from './cloudNoise'
 
+
 interface NatureSceneProps {
   sceneSettings: SceneSettings
   qualityTier: QualityTier
@@ -377,7 +378,7 @@ export function NatureScene({
         visible={visible}
       />
       <GroundMist quality={quality} atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} visible={visible} reducedMotion={reducedMotion} />
-      <Farm atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} effectsRef={visualEffectsRef} />
+      <Farm lightsEnabled={sceneSettings.farmLights} atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} effectsRef={visualEffectsRef} />
       <FixedCamera />
       {quality.postprocessing ? <PostProcessing quality={quality} /> : null}
     </CloudNoiseProvider>

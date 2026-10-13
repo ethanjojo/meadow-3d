@@ -2,7 +2,8 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { BoxGeometry, BufferGeometry, ExtrudeGeometry, MeshStandardMaterial, Shape } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { FARM } from '../core/farm'
+import { FARM, FARM_WINDOWS } from '../core/farm'
+import { FarmWindows } from './FarmWindows'
 import { terrainHeight } from '../core/grassLayout'
 import type { AtmosphereState } from '../core/atmosphere'
 import type { EnvironmentSnapshot } from '../core/simulation'
@@ -68,14 +69,9 @@ function buildFarm() {
     box('dark', [0.055, 0.2, 0.06], [x + (x < 0 ? 0.48 : -0.48), 1.52, 4.3])
   }
   box('trim', [3.16, 0.16, 0.18], [0, 3.07, 4.17])
-  box('dark', [1.15, 1.15, 0.08], [0, 4.55, 4.09])
-  frame(0, 4.55, 1.2, 1.2, 4.18)
+  for (const window of FARM_WINDOWS) frame(window.x, window.y, window.width + .05, window.height + .05, window.x === 0 ? 4.18 : 4.17)
   box('trim', [0.06, 1.15, 0.08], [0, 4.55, 4.2])
   box('trim', [1.15, 0.06, 0.08], [0, 4.55, 4.2])
-  for (const x of [-2.2, 2.2]) {
-    box('dark', [0.65, 0.85, 0.05], [x, 1.92, 4.09])
-    frame(x, 1.92, 0.7, 0.9, 4.17)
-  }
   // A small fenced yard anchors the barn in the meadow.
   box('yard', [9.9, 0.05, 2.1], [0, 0.08, 5.25])
   for (const x of [-5, -3.3, -1.6, 1.6, 3.3, 5]) {
@@ -93,7 +89,7 @@ function buildFarm() {
   })
 }
 
-export function Farm({ atmosphereRef, snapshotRef, effectsRef }: { atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects> }) {
+export function Farm({ lightsEnabled, atmosphereRef, snapshotRef, effectsRef }: { lightsEnabled: boolean; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects> }) {
   const meshes = useMemo(buildFarm, [])
   const materials = useRef<(MeshStandardMaterial | null)[]>([])
   const snowUniform = useMemo(() => ({ value: 0 }), [])
@@ -111,6 +107,7 @@ export function Farm({ atmosphereRef, snapshotRef, effectsRef }: { atmosphereRef
   })
   return (
     <group name="farm-barn" position={[FARM.x, terrainHeight(FARM.x, FARM.z) - 0.04, FARM.z]} rotation-y={FARM.rotation} scale={FARM.scale}>
+      <FarmWindows snapshotRef={snapshotRef} enabled={lightsEnabled} />
       {meshes.map(({ surface, geometry }, index) => (
         <mesh key={surface} geometry={geometry} castShadow receiveShadow>
           <meshStandardMaterial ref={material => { materials.current[index] = material }} color={COLORS[surface]} emissive={COLORS[surface]} emissiveIntensity={0.25} roughness={surface === 'roof' ? 0.63 : 0.92}
