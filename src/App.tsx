@@ -225,6 +225,7 @@ export function App() {
             gl={{
               antialias: qualityTier !== 'low',
               alpha: false,
+              precision: 'highp',
               powerPreference: 'high-performance',
               toneMapping: ACESFilmicToneMapping,
             }}

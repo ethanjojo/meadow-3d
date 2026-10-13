@@ -26,6 +26,7 @@ import { Meadow } from './Meadow'
 import { PostProcessing } from './PostProcessing'
 import { WeatherParticles } from './WeatherParticles'
 import { GroundMist } from './GroundMist'
+import { CloudNoiseProvider } from './cloudNoise'
 
 interface NatureSceneProps {
   sceneSettings: SceneSettings
@@ -345,7 +346,7 @@ export function NatureScene({
   })
 
   return (
-    <>
+    <CloudNoiseProvider>
       <Atmosphere
         sceneSettings={sceneSettings}
         quality={quality}
@@ -379,6 +380,6 @@ export function NatureScene({
       <Farm atmosphereRef={atmosphereRef} snapshotRef={snapshotRef} effectsRef={visualEffectsRef} />
       <FixedCamera />
       {quality.postprocessing ? <PostProcessing quality={quality} /> : null}
-    </>
+    </CloudNoiseProvider>
   )
 }

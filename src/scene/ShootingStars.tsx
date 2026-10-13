@@ -6,12 +6,14 @@ import { getShootingStarState, projectShootingStarTrail } from '../core/celestia
 import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import { cloudFieldChunk } from './cloudShaders'
+import { useCloudNoise } from './cloudNoise'
 
 interface ShootingStarsProps {
   quality: QualityProfile; snapshotRef: MutableRefObject<EnvironmentSnapshot>; atmosphereRef: MutableRefObject<AtmosphereState>; reducedMotion: boolean; visible: boolean
 }
 
 export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMotion, visible }: ShootingStarsProps) {
+  const cloudNoise = useCloudNoise()
   const refs = useRef<Array<Mesh | null>>([])
   const trails = useMemo(() => Array.from({ length: quality.shootingStarPool }, (_, slot) => {
     const geometry = new BufferGeometry()
@@ -20,7 +22,7 @@ export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMoti
     geometry.setIndex([0,2,1, 1,2,3])
     const material = new ShaderMaterial({
       transparent: true, depthWrite: false, depthTest: false, blending: AdditiveBlending, toneMapped: false,
-      uniforms: { uColor: { value: new Color(slot % 2 ? '#fff1d7' : '#d5eaff') }, uOpacity: { value: 0 }, uCover: { value: 0 }, uDrift: { value: new Vector2() } },
+      uniforms: { uCloudNoise: { value: cloudNoise }, uColor: { value: new Color(slot % 2 ? '#fff1d7' : '#d5eaff') }, uOpacity: { value: 0 }, uCover: { value: 0 }, uDrift: { value: new Vector2() } },
       vertexShader: `varying vec2 vUv; varying vec3 vDirection; void main() { vUv = uv; vec4 world = modelMatrix * vec4(position,1.0); vDirection = world.xyz - cameraPosition; gl_Position = projectionMatrix * viewMatrix * world; }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uColor; uniform float uOpacity, uCover; uniform vec2 uDrift;
@@ -29,8 +31,10 @@ export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMoti
         void main() {
           float across = (vUv.y - .5) * 2.0;
           float taper = .12 + vUv.x * .88;
-          float ribbon = exp(-pow(across / taper * 2.8,2.0)) * pow(vUv.x,.5);
-          float head = exp(-pow((vUv.x - .98) * 25.0,2.0) - across * across * 18.0);
+          float ribbonDistance = across / taper * 2.8;
+          float ribbon = exp(-ribbonDistance * ribbonDistance) * sqrt(max(vUv.x, 0.0));
+          float headDistance = (vUv.x - .98) * 25.0;
+          float head = exp(-headDistance * headDistance - across * across * 18.0);
           float clear = 1.0 - cloudDensity(cloudSkyPoint(normalize(vDirection)),uDrift,uCover);
           gl_FragColor = vec4(uColor * (1.2 + head * 1.2), min(1.0, (ribbon * 1.1 + head) * uOpacity * clear));
           #include <colorspace_fragment>
@@ -38,7 +42,7 @@ export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMoti
       `,
     })
     return { geometry, material }
-  }), [quality.shootingStarPool])
+  }), [quality.shootingStarPool, cloudNoise])
   const point = useMemo(() => new Vector3(), [])
   const projected = useMemo(() => ({ head: [0,0,0] as [number,number,number], tail: [0,0,0] as [number,number,number] }), [])
   const forced = useMemo(() => {

@@ -44,7 +44,8 @@ export const grassVertexShader = /* glsl */ `
 
   void main() {
     float heightRatio = clamp(position.y, 0.0, 1.0);
-    float rootInfluence = pow(smoothstep(0.38, 1.0, heightRatio), 2.0);
+    float rootFade = smoothstep(0.38, 1.0, heightRatio);
+    float rootInfluence = rootFade * rootFade;
     float cameraDistance = distance(cameraPosition.xz, instanceOffset.xz);
     float cameraClearance = smoothstep(1.6, 8.0, cameraDistance);
     float clearanceHeight = mix(0.15, 1.0, cameraClearance);

@@ -159,8 +159,9 @@ describe('layered grass layout', () => {
   it('uses root-locked bounded curvature without scale-multiplied bend', () => {
     expect(grassVertexShader).toContain('uniform float uBendLimit')
     expect(grassVertexShader).toContain(
-      'pow(smoothstep(0.38, 1.0, heightRatio), 2.0)',
+      'float rootFade = smoothstep(0.38, 1.0, heightRatio)',
     )
+    expect(grassVertexShader).toContain('float rootInfluence = rootFade * rootFade')
     expect(grassVertexShader).toContain(
       'clamp(waveSignal * flexibility, -uBendLimit, uBendLimit)',
     )

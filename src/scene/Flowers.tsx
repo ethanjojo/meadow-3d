@@ -12,6 +12,7 @@ import { createFlowerLayout } from '../core/grassLayout'
 import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
+import { useCloudNoise } from './cloudNoise'
 import { cloudShadowChunk } from './grassShaders'
 import { createFlowerBatches, FLOWER_HEAD_HEIGHT } from './flowerGeometry'
 
@@ -158,9 +159,14 @@ export function Flowers({
   atmosphereRef,
   effectsRef,
 }: FlowersProps) {
+  const cloudNoise = useCloudNoise()
   const camera = useThree(state => state.camera)
   const batches = useMemo(() => createFlowerBatches(createFlowerLayout(count, 9_461), camera.position, detailed), [count, camera, detailed])
-  const material = useMemo(createFlowerMaterial, [])
+  const material = useMemo(() => {
+    const result = createFlowerMaterial()
+    result.uniforms.uCloudNoise = { value: cloudNoise }
+    return result
+  }, [cloudNoise])
 
   useEffect(() => () => batches.forEach(batch => batch.geometry.dispose()), [batches])
   useEffect(() => () => material.dispose(), [material])

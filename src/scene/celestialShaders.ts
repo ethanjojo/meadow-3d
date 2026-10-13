@@ -45,7 +45,8 @@ export const moonFragmentShader = /* glsl */ `
   float crater(vec2 p, vec2 center, float radius) {
     vec2 local = (p - center) / radius;
     float d = length(local);
-    float rim = exp(-pow((d - .92) * 9.0, 2.0));
+    float rimDistance = (d - .92) * 9.0;
+    float rim = exp(-rimDistance * rimDistance);
     float bowl = 1.0 - smoothstep(.2, .78, d);
     return rim * .035 - bowl * .025 + rim * local.x * .025;
   }
@@ -67,7 +68,8 @@ export const moonFragmentShader = /* glsl */ `
       + crater(p,vec2(-.65,.12),.05) + crater(p,vec2(-.1,.61),.065)
       + crater(p,vec2(-.28,-.67),.085) + crater(p,vec2(.52,-.42),.055);
     float rayDistance = length(p - vec2(.12,-.6));
-    float rays = pow(max(0.0,cos(atan(p.y+.6,p.x-.12)*11.0)),18.0) * exp(-rayDistance*5.0) * .018;
+    float rayAngle = rayDistance > .0001 ? atan(p.y+.6,p.x-.12) : 0.0;
+    float rays = pow(max(0.0,cos(rayAngle*11.0)),18.0) * exp(-rayDistance*5.0) * .018;
     float albedo = .95 - maria * .24 + relief + rays;
     float diffuse = .83 + .17 * sqrt(max(0.0,incidence));
     // Earthshine reveals the unlit surface in cool gray-blue, especially at crescent phases.

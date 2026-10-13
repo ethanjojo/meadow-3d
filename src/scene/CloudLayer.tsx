@@ -6,6 +6,7 @@ import type { QualityProfile } from '../core/quality'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { cloudFieldChunk } from './cloudShaders'
+import { useCloudNoise } from './cloudNoise'
 import { getStormEvent } from '../core/sceneEffects'
 
 interface CloudLayerProps {
@@ -17,10 +18,12 @@ interface CloudLayerProps {
 }
 
 export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, visible }: CloudLayerProps) {
+  const cloudNoise = useCloudNoise()
   const material = useMemo(() => new ShaderMaterial({
     side: BackSide, transparent: true, depthWrite: false,
     defines: { CLOUD_LAYERS: quality.cloudLayers },
     uniforms: {
+      uCloudNoise: { value: cloudNoise },
       uCover: { value: 0 }, uStorm: { value: 0 }, uFlash: { value: 0 }, uFlashX: { value: 0 },
       uDrift: { value: new Vector2() }, uLight: { value: new Vector3() },
       uColor: { value: new Color() }, uTint: { value: new Color() }, uDay: { value: 1 },
@@ -56,7 +59,8 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
         base += uTint * litEdge * (0.08 + 0.55 * uDay) * (1.0 - uStorm * 0.7);
         float silver = pow(max(dot(ray, normalize(uLight)), 0.0), 12.0);
         base += uTint * silver * (1.0 - thickness) * (0.04 + uDay * 0.24);
-        float localFlash = exp(-pow((ray.x - uFlashX * .55) * 3.5, 2.0));
+        float flashDistance = (ray.x - uFlashX * .55) * 3.5;
+        float localFlash = exp(-flashDistance * flashDistance);
         base += vec3(0.65, 0.76, 1.0) * uFlash * (.18 + localFlash * .82);
         float horizon = smoothstep(0.02, 0.22, ray.y);
         float alpha = density * horizon * mix(0.88, 0.97, uCover);
@@ -65,7 +69,7 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
         #include <colorspace_fragment>
       }
     `,
-  }), [quality.cloudLayers])
+  }), [quality.cloudLayers, cloudNoise])
   useEffect(() => () => material.dispose(), [material])
   useFrame(() => {
     if (!visible) return

@@ -30,6 +30,7 @@ import type { SeasonAppearance } from '../core/season'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { WeatherEffects } from '../core/weather'
 import { syncGrassAtmosphereUniforms } from './grassAtmosphere'
+import { useCloudNoise } from './cloudNoise'
 import { Flowers } from './Flowers'
 import {
   cloudShadowChunk,
@@ -241,6 +242,7 @@ export function Meadow({
   effectsRef,
   reducedMotion,
 }: MeadowProps) {
+  const cloudNoise = useCloudNoise()
   const { gl } = useThree()
   const terrainMaterialRef = useRef<MeshStandardMaterial>(null)
   const fallbackTextures = useMemo(createGrassTextureFallbacks, [])
@@ -248,7 +250,7 @@ export function Meadow({
   const layers = useMemo(() => {
     const budgets = getGrassLayerBudgets(quality.grassBlades)
 
-    return GRASS_LAYERS.map((layer) => ({
+    const result = GRASS_LAYERS.map((layer) => ({
       ...layer,
       geometry: createBladeGeometry(budgets[layer.kind], layer.kind, layer.seed),
       material: createGrassMaterial(
@@ -259,7 +261,10 @@ export function Meadow({
         quality.grassAtlas && grassLayerUsesAtlas(layer.kind),
       ),
     }))
+    result.forEach(layer => { layer.material.uniforms.uCloudNoise = { value: cloudNoise } })
+    return result
   }, [
+    cloudNoise,
     fallbackTextures,
     quality.grassAtlas,
     quality.grassBlades,
@@ -411,6 +416,7 @@ export function Meadow({
           emissiveIntensity={0.65}
           roughness={0.95}
           onBeforeCompile={(shader) => {
+            shader.uniforms.uCloudNoise = { value: cloudNoise }
             shader.uniforms.uRimFadeColor = groundRimUniform
             shader.uniforms.uShadowCover = groundCloudUniforms.cover
             shader.uniforms.uShadowStrength = groundCloudUniforms.strength

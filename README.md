@@ -55,6 +55,17 @@ modulates vegetation, rain/snow drift, cloud movement and wind sound. Cloud
 shapes use clustered procedural puffs with darker bodies, light-facing edges,
 sunset tint and subdued moonlight. The same world-space density field drives
 cloud shadows and stellar/meteor occlusion; distant secondary layers add depth.
+All cloud consumers share one seeded 128×128 RGBA noise data texture, owned by
+the scene and disposed on unmount. Nearest sampling, ungraded data and complete
+neighbor coverage keep shapes stable across GPU implementations and cell seams.
+Shaders use ordered smoothstep bounds and multiplication for signed squares,
+avoiding undefined GLSL calculations in clouds, mist, precipitation and meteors.
+
+Cross-browser verification: run `npx playwright install chromium firefox webkit`
+then `npm run test:e2e -- tests/e2e/shader-portability.spec.ts`. The test renders
+the actual cloud field on the GPU at negative coordinates and texture seams in
+Chromium desktop/mobile, Firefox and WebKit. Local tests use port 5175. Playwright
+WebKit is an additional check; actual Safari/macOS hardware still needs verification.
 
 Stars have a restrained distribution of brightness, size, temperature and
 individual twinkle speeds, fading toward the horizon. Clear nights on medium/high

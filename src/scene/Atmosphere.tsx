@@ -23,6 +23,7 @@ import { CelestialBodies } from './CelestialBodies'
 import { CloudLayer } from './CloudLayer'
 import { ShootingStars } from './ShootingStars'
 import { cloudFieldChunk } from './cloudShaders'
+import { useCloudNoise } from './cloudNoise'
 import { Lightning } from './Lightning'
 
 interface AtmosphereProps {
@@ -62,7 +63,8 @@ const skyFragmentShader = /* glsl */ `
     color += vec3(1.0, 0.77, 0.46) * sunHalo * uSunGlow * 0.18;
     float lowSunGlow = pow(max(dot(vWorldDirection, normalize(uSunDirection)), 0.0), 5.0);
     color += vec3(0.65, 0.24, 0.055) * lowSunGlow * uGoldenHour * 0.24;
-    float band = exp(-pow((vWorldDirection.x - vWorldDirection.y * 0.45 + 0.18) * 9.0, 2.0));
+    float bandDistance = (vWorldDirection.x - vWorldDirection.y * 0.45 + 0.18) * 9.0;
+    float band = exp(-bandDistance * bandDistance);
     color += vec3(0.035, 0.039, 0.052) * band * uNightOpacity * smoothstep(0.15, 0.6, vWorldDirection.y);
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
@@ -157,6 +159,7 @@ export function Atmosphere({
   reducedMotion,
   visible,
 }: AtmosphereProps) {
+  const cloudNoise = useCloudNoise()
   const { gl } = useThree()
   const sunRef = useRef<DirectionalLight>(null)
   const moonRef = useRef<DirectionalLight>(null)
@@ -172,6 +175,7 @@ export function Atmosphere({
         vertexShader: starVertexShader,
         fragmentShader: starFragmentShader,
         uniforms: {
+          uCloudNoise: { value: cloudNoise },
           uColor: { value: new Color('#dbe7ec') },
           uOpacity: { value: 0 },
           uTime: { value: 0 },
@@ -182,7 +186,7 @@ export function Atmosphere({
         blending: AdditiveBlending,
         toneMapped: false,
       }),
-    [],
+    [cloudNoise],
   )
   const skyMaterial = useMemo(
     () =>

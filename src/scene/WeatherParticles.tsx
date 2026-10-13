@@ -52,7 +52,7 @@ const particleVertexShader = /* glsl */ `
 
   void main() {
     vec3 animated = position;
-    float fade = smoothstep(-2.0, 1.0, animated.y) * smoothstep(13.0, 9.0, animated.y);
+    float fade = smoothstep(-2.0, 1.0, animated.y) * (1.0 - smoothstep(9.0, 13.0, animated.y));
     float sizeFactor = 0.55 + aSeed * 0.9;
     float pulse = 1.0;
     vStretch = 1.0;
@@ -85,7 +85,8 @@ const particleVertexShader = /* glsl */ `
       animated.xz *= 0.8;
       animated.y = mod(position.y, 1.5) + 0.2;
       float speed = 0.16 + aSeed * 0.28;
-      float hover = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(time * 0.13 + aSeed * 80.0), 2.0);
+      float hoverWave = 0.5 + 0.5 * sin(time * 0.13 + aSeed * 80.0);
+      float hover = 0.35 + 0.65 * hoverWave * hoverWave;
       animated.x += (sin(time * speed + aSeed * 41.0) * 0.55 + sin(time * speed * 0.37 + position.z) * 0.6) * hover;
       animated.z += (cos(time * speed * 0.8 + aSeed * 32.0) * 0.5 + sin(time * speed * 0.29) * 0.4) * hover;
       animated.y += sin(time * speed * 0.62 + aSeed * 19.0) * 0.22;
@@ -106,7 +107,7 @@ const particleVertexShader = /* glsl */ `
     vec4 viewPosition = modelViewMatrix * vec4(animated, 1.0);
     if (uKind > 0.5 && uKind < 2.5) {
       float ground = sin(animated.x * 0.09) * 0.13 + sin(animated.z * 0.13) * 0.08;
-      fade *= smoothstep(ground - 0.1, ground + 0.4, animated.y) * smoothstep(14.0, 11.0, animated.y);
+      fade *= smoothstep(ground - 0.1, ground + 0.4, animated.y) * (1.0 - smoothstep(11.0, 14.0, animated.y));
     }
     if (uKind > 1.5 && uKind < 2.5) fade *= exp(-max(0.0, -viewPosition.z) * 0.027);
     vec4 projectedStreakOrientation = projectionMatrix * viewMatrix * vec4(uRainStreakOrientation, 0.0);
@@ -137,21 +138,22 @@ const particleFragmentShader = /* glsl */ `
       float cosine = cos(vRainAngle);
       float sine = sin(vRainAngle);
       vec2 oriented = mat2(cosine, sine, -sine, cosine) * centered;
-      shape = exp(-pow(oriented.x * 23.0, 2.0)) *
+      float streakDistance = oriented.x * 23.0;
+      shape = exp(-streakDistance * streakDistance) *
         (1.0 - smoothstep(0.34, 0.5, abs(oriented.y))) * (0.45 + 0.55 * vSeed);
     } else if (uKind > 3.5) {
       float radius = length(centered * vec2(1.0, 2.8));
-      float ring = smoothstep(0.48, 0.4, radius) * smoothstep(0.3, 0.39, radius);
+      float ring = (1.0 - smoothstep(0.4, 0.48, radius)) * smoothstep(0.3, 0.39, radius);
       shape = ring;
     } else if (uKind > 2.5 && uKind < 3.5) {
       float radius = length(centered);
       shape = exp(-radius * radius * 18.0) * 0.28 + exp(-radius * radius * 150.0);
     } else if (uKind > 1.5 && uKind < 2.5) {
-      float angle = atan(centered.y, centered.x) + vSeed * 13.0;
+      float angle = (length(centered) > .0001 ? atan(centered.y, centered.x) : 0.0) + vSeed * 13.0;
       float radius = length(centered);
       shape = (1.0 - smoothstep(0.16, 0.43, radius)) * (0.85 + 0.15 * cos(angle * 6.0));
     } else {
-      shape = smoothstep(0.5, 0.08, length(centered));
+      shape = 1.0 - smoothstep(0.08, 0.5, length(centered));
     }
     if (shape < 0.02) discard;
     gl_FragColor = vec4(uColor, shape * uOpacity * vFade * vPulse);

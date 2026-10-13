@@ -5,13 +5,15 @@ import type { AtmosphereState } from '../core/atmosphere'
 import type { EnvironmentSnapshot } from '../core/simulation'
 import type { QualityProfile } from '../core/quality'
 import { cloudFieldChunk } from './cloudShaders'
+import { useCloudNoise } from './cloudNoise'
 
 export function GroundMist({ quality, atmosphereRef, snapshotRef, visible, reducedMotion }: {
   quality: QualityProfile; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; visible: boolean; reducedMotion: boolean
 }) {
+  const cloudNoise = useCloudNoise()
   const material = useMemo(() => new ShaderMaterial({
     transparent: true, side: DoubleSide, depthWrite: false,
-    uniforms: { uColor: { value: new Color() }, uOpacity: { value: 0 }, uDrift: { value: new Vector2() } },
+    uniforms: { uCloudNoise: { value: cloudNoise }, uColor: { value: new Color() }, uOpacity: { value: 0 }, uDrift: { value: new Vector2() } },
     vertexShader: `varying vec2 vUv; varying vec3 vWorld; void main() { vUv = uv; vec4 world = modelMatrix * vec4(position,1.0); vWorld = world.xyz; gl_Position = projectionMatrix * viewMatrix * world; }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor; uniform float uOpacity; uniform vec2 uDrift;
@@ -19,7 +21,7 @@ export function GroundMist({ quality, atmosphereRef, snapshotRef, visible, reduc
       ${cloudFieldChunk}
       void main() {
         float wisps = cloudNoise(vWorld.xz * .07 + uDrift) * .7 + cloudNoise(vWorld.xz * .19 - uDrift * .5) * .3;
-        float edge = smoothstep(0.0,.12,vUv.x) * smoothstep(1.0,.88,vUv.x);
+        float edge = smoothstep(0.0,.12,vUv.x) * (1.0 - smoothstep(.88,1.0,vUv.x));
         float height = sin(vUv.y * 3.14159);
         float alpha = smoothstep(.3,.8,wisps) * height * height * edge * uOpacity;
         gl_FragColor = vec4(uColor,alpha);
@@ -27,7 +29,7 @@ export function GroundMist({ quality, atmosphereRef, snapshotRef, visible, reduc
         #include <colorspace_fragment>
       }
     `,
-  }), [])
+  }), [cloudNoise])
   useEffect(() => () => material.dispose(), [material])
   useFrame(() => {
     if (!visible) return
