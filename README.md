@@ -23,13 +23,48 @@ npm run test:e2e
 - `npm test` runs unit and component tests.
 - `npm run lint` performs strict TypeScript checking.
 - `npm run build` creates the production output in `dist`.
-- `npm run test:e2e` verifies desktop and mobile rendering in Chromium.
+- `npm run test:e2e` verifies Chromium desktop/mobile, Firefox and WebKit.
 
 ## Controls and performance
 
 The scene is intentionally passive: the camera moves only subtly and responds to the pointer with light parallax. Sound always starts muted and can be enabled with the button in the lower-right corner.
 
 Grass density, particle counts, resolution, and shadows adapt automatically to device performance. `prefers-reduced-motion` limits camera and particle movement without disabling the day or seasonal cycle. When WebGL is unavailable, the page displays a static fallback meadow.
+
+Wet grass reflections use the light/view half-vector and share cloud attenuation
+with the blade lighting. Overhead sunlight therefore retains the grass colour
+during rain and storms instead of applying a white highlight to every blade.
+Wet reflections use the actual rotated and bent blade surface normals rather than
+the upward canopy normal used for diffuse fill. Narrow, bounded dielectric glints
+retain the grass colour when low sunlight faces the viewer across a rainy meadow.
+
+Aurora reuses the shared precomputed cloud-noise texture for broad translucent
+veils, bending rising plumes, brightness gaps and occasional violet tips.
+Each occurrence generates one to three veils with different bends, widths and
+heights. Their group can lie on either side, across the centre, upright or slanted;
+there are no fixed left/right plumes. A slow lateral drift carries the composition
+across the view. Independent travelling
+bends twist the upper sheets while their widths and translucent wings gently breathe.
+The movement setting controls both drift and deformation; pause and reduced motion freeze them.
+Each preview and new visible event selects a fresh composition. Visible changes
+morph over a few seconds, including fades for added or removed veils. Ordered
+positions, a shared group rotation and bounded independent bends keep creases
+apart while allowing their translucent wings to overlap locally.
+There is no repeated filament
+grid or continuous bright baseline. Sampling is
+bounded at 12 texture reads per layer,
+without extra assets or ray marching. It uses one sky dome with 1/2/3 layers at
+Low/Medium/High quality, drawn behind the cloud dome and foreground scenery.
+Automatic displays favour winter (an artistic choice), last 2–4 minutes with
+25–30 second event fades, and occur irregularly about every 15 minutes at the
+default frequency. Darkness gates visibility, moonlight and fog attenuate it,
+and rain/storms suppress it. Sky & weather → Aurora provides Automatic,
+Always at night and Off modes, brightness, frequency and movement. Its transient
+45-second Preview bypasses rarity/season/off without changing saved preferences;
+daylight and weather still apply. Setting changes ease over several seconds,
+paused time freezes curtain movement, and reduced motion keeps it static.
+Older version-1 presets/exports receive only the missing Aurora defaults;
+supplied values and all existing fields remain strictly validated.
 
 ## Atmospheric effects
 
@@ -38,17 +73,45 @@ buttercups, raised pollen centers, curved stems and folded leaves. Seeded small
 clusters vary in height, direction and tilt, with some blooms hidden by grass.
 Sparse flower budgets (48/144/240 for low/medium/high) keep grass dominant and
 leave open space between clusters.
-Advanced settings has Sound and Scene tabs. Sound retains channel mixing and
-previews; Scene adjusts flower and firefly density, star brightness, rain/snow
-particles, shooting stars, lightning flashes and gentler motion. Preferences
-apply immediately and persist under `living-meadow:scene`; each tab has its own
-reset. Flower density defaults to 33% and is capped at three times the tier's
-sparse budget. Visual effect preferences do not modify the weather simulation,
-snow accumulation or audio levels. System reduced-motion preferences take priority.
+Advanced settings has six tabs: Sound, Nature, Sky & weather, Farm,
+Time & performance and Presets. Header search lists individual settings with their tab/group path; selecting a result
+opens the tab and nested groups, scrolls and focuses the control, then highlights it
+twice (a static highlight for reduced motion). Arrow keys/Enter navigate results;
+Escape dismisses results before the modal. Mobile search expands from a magnifier.
+One shared search index uses the same labels as the controls. Expandable groups keep
+detailed controls out of the way. Each settings category has its own reset.
+Settings apply immediately and persist on this device. The Presets tab holds
+all preset and sharing tools: named snapshots capture scene, sound and
+environment choices, and JSON export/import transfers them between devices.
+Invalid imports leave current settings untouched. Up to twelve named presets
+can be stored.
+
+Sound includes group and individual levels, independent previews, per-species
+natural/all-day/custom activity, overnight scene-hour windows, random real-second
+pause ranges, distance, stereo placement and weather sensitivity. One event-driven
+scheduler shares concurrency and minimum-gap limits across farm animals and birds.
+Busy playback can postpone a call beyond its nominal pause range. Thunder distance
+sets both its volume and its delay, using the same event as visual lightning.
+
+Nature controls flower species (daisies, buttercups and cornflowers), size, density
+and motion; grass detail, height and motion; firefly hours, speed and brightness;
+wind, gusts and dew. Sky controls clouds, shadows, fog, precipitation, snow buildup
+and melting, stars, meteors, lightning, golden hour and moon appearance/phase.
+Flower density defaults to 33% and retains a maximum of three times the tier's
+sparse budget. System reduced-motion preferences always take priority.
+
+Time controls preserve current phases when changing day/season duration; pausing
+freezes scene motion while setting transitions can finish. Device time is available
+in automatic mode; Manual time takes priority. Automatic weather can be restricted
+to selected profiles. Performance offers automatic/manual quality, actual GPU frame
+limits, power saving, bloom and shadows. Power saving uses Low and 30 FPS. Low
+quality does not provide bloom or cast shadows.
 Farm windows glow in warm amber from about 18:30 to 21:00 in scene time. Each
 window has a staggered nine-minute fade, a subdued halo and a soft facade spill,
 including on low quality without bloom. Manual time selects the same schedule.
-The Farm lights switch in Scene settings enables or disables this routine.
+Farm settings can hide the building, override the light schedule (including
+overnight hours or always on/off), adjust warmth, brightness and fade duration,
+and stagger windows or vary their routine between scene days.
 Plant bending and a slight delayed head sway follow the shared wind; thin petals
 transmit sunlight. Distant flowers and low quality use simpler geometry with the
 same lighting and silhouettes. Snow shrinks the plants with the existing seasonal
@@ -77,6 +140,10 @@ the actual cloud field on the GPU at negative coordinates, texture seams and
 both sides of the celestial zenith in
 Chromium desktop/mobile, Firefox and WebKit. Local tests use port 5175. Playwright
 WebKit is an additional check; actual Safari/macOS hardware still needs verification.
+Windows Playwright WebKit does not expose Web Audio in this installation; the
+native audio activation test skips only when both AudioContext constructors are
+absent. Chromium and Firefox verify activation; Safari audio requires a real
+Mac/iPhone check.
 
 Stars have a restrained distribution of brightness, size, temperature and
 individual twinkle speeds, fading toward the horizon. Clear nights on medium/high

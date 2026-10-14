@@ -23,42 +23,34 @@ function createSnapshot(dayPhase: number, weather: 'clear' | 'rain' = 'clear') {
 }
 
 describe('deriveAmbientAudioMix', () => {
-  it('routes daytime birds through an audible day layer', () => {
-    const mix = deriveAmbientAudioMix(createSnapshot(0.5))
-
-    expect(mix.dayGain).toBeGreaterThan(0)
-    expect(mix.birdGain).toBeGreaterThan(0)
+  it('keeps a gentle clear-weather wind and adds rain only when required', () => {
+    const clear = deriveAmbientAudioMix(createSnapshot(.5))
+    const rain = deriveAmbientAudioMix(createSnapshot(.5, 'rain'))
+    expect(clear.windGain).toBeGreaterThan(0)
+    expect(clear.rainGain).toBe(0)
+    expect(rain.rainGain).toBeGreaterThan(0)
+    expect(rain.windFrequency).toBeGreaterThan(clear.windFrequency)
   })
 
-  it('silences daytime birds at night and reduces them in rain', () => {
-    const clear = deriveAmbientAudioMix(createSnapshot(0))
-    const rain = deriveAmbientAudioMix(createSnapshot(0, 'rain'))
-
-    expect(clear.birdGain).toBe(0)
-    expect(clear.dayGain).toBe(0)
-    expect(rain.birdGain).toBe(0)
-    expect(deriveAmbientAudioMix(createSnapshot(0.5, 'rain')).birdGain).toBeLessThan(deriveAmbientAudioMix(createSnapshot(0.5)).birdGain)
-  })
-
-  it('crossfades day and night endpoints instead of sampling accelerated time', () => {
+  it('crossfades weather endpoints without jumping to the destination mix', () => {
     const noonAuto = sampleNatureClock(DEFAULT_CLOCK.dayDuration * 0.5)
     const frame = createEnvironmentTransition(noonAuto, {
       mode: 'manual', dayPhase: 0.5, seasonIndex: 1, weather: 'clear',
     })
-    const midnight = {
+    const rainy = {
       mode: 'manual' as const,
-      dayPhase: 0,
+      dayPhase: .5,
       seasonIndex: 1 as const,
-      weather: 'clear' as const,
+      weather: 'rain' as const,
     }
-    stepEnvironmentTransition(frame, noonAuto, midnight, 0)
+    stepEnvironmentTransition(frame, noonAuto, rainy, 0)
     for (let tick = 0; tick < 90; tick += 1) {
-      stepEnvironmentTransition(frame, noonAuto, midnight, 1 / 60)
+      stepEnvironmentTransition(frame, noonAuto, rainy, 1 / 60)
     }
 
     const mix = deriveAmbientAudioMixFromFrame(frame)
     expect(frame.progress).toBeCloseTo(0.5)
-    expect(mix.dayGain).toBeGreaterThan(0)
-    expect(mix.birdGain).toBeGreaterThan(0)
+    expect(mix.rainGain).toBeGreaterThan(0)
+    expect(mix.rainGain).toBeLessThan(deriveAmbientAudioMix(frame.target).rainGain)
   })
 })

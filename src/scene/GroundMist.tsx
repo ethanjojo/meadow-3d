@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import { Color, DoubleSide, ShaderMaterial, Vector2 } from 'three'
@@ -7,8 +8,8 @@ import type { QualityProfile } from '../core/quality'
 import { cloudFieldChunk } from './cloudShaders'
 import { useCloudNoise } from './cloudNoise'
 
-export function GroundMist({ quality, atmosphereRef, snapshotRef, visible, reducedMotion }: {
-  quality: QualityProfile; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; visible: boolean; reducedMotion: boolean
+export function GroundMist({ sceneSettings, quality, atmosphereRef, snapshotRef, visible, reducedMotion }: {
+  sceneSettings: SceneSettings; quality: QualityProfile; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; visible: boolean; reducedMotion: boolean
 }) {
   const cloudNoise = useCloudNoise()
   const material = useMemo(() => new ShaderMaterial({
@@ -36,7 +37,7 @@ export function GroundMist({ quality, atmosphereRef, snapshotRef, visible, reduc
     const state = atmosphereRef.current, snapshot = snapshotRef.current
     const dawn = Math.exp(-Math.pow((snapshot.dayPhase - .25) * 18, 2))
     material.uniforms.uColor.value.copy(state.fogColor)
-    material.uniforms.uOpacity.value = Math.min(.32, snapshot.weather.fog * .24 + snapshot.weather.rain * .08 + dawn * .07)
+    material.uniforms.uOpacity.value = Math.min(.32, snapshot.weather.fog * .24 + snapshot.weather.rain * .08 + dawn * .07) * sceneSettings.groundMist
     material.uniforms.uDrift.value.set(...snapshot.weather.windDirection).normalize().multiplyScalar(snapshot.elapsed * .006 * (reducedMotion ? .25 : 1))
   })
   return <group name="low-meadow-mist">{Array.from({ length: quality.cloudLayers + 1 }, (_, layer) => <mesh key={layer} position={[0, .9 + layer * .2, -8 - layer * 8]} material={material} frustumCulled={false}><planeGeometry args={[68, 2.4]} /></mesh>)}</group>

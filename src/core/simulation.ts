@@ -119,6 +119,7 @@ function createSnapshot(
     weather: getWeatherProfile(weather.preset),
   }
 
+  snapshot.dayCycle = auto.dayCycle
   snapshot.elapsed = auto.elapsed
   snapshot.dayPhase = wrap(dayPhase, 1)
   snapshot.seasonPhase = normalizedSeasonPosition / 4
@@ -178,6 +179,7 @@ export function createEnvironmentSnapshot(
   auto: NatureSnapshot,
   settings: SimulationSettings,
   target?: EnvironmentSnapshot,
+  allowedWeather?: readonly WeatherPreset[],
 ): EnvironmentSnapshot {
   if (settings.mode === 'manual') {
     const weather = getWeatherProfile(settings.weather, target?.weather)
@@ -190,11 +192,17 @@ export function createEnvironmentSnapshot(
     )
   }
 
-  const weather = getAutomaticWeather(
+  let weather = getAutomaticWeather(
     auto,
     getSeasonAppearance(auto),
     target?.weather,
   )
+  if (allowedWeather && allowedWeather.length < WEATHER_PRESETS.length) {
+    // Blend adjacent allowed profiles along the same continuous weather signal.
+    const position = auto.weatherIntensity * Math.max(0, allowedWeather.length - 1)
+    const index = Math.floor(position)
+    weather = blendWeather(getWeatherProfile(allowedWeather[index] ?? 'clear'), getWeatherProfile(allowedWeather[Math.min(index + 1, allowedWeather.length - 1)] ?? 'clear'), position - index, target?.weather)
+  }
   return createSnapshot(
     auto,
     auto.dayPhase,
@@ -226,12 +234,14 @@ export function stepEnvironmentTransition(
   auto: NatureSnapshot,
   settings: SimulationSettings,
   deltaSeconds: number,
+  options: { duration?: number; allowedWeather?: readonly WeatherPreset[]; realTime?: boolean } = {},
 ): EnvironmentTransitionFrame {
-  const nextKey = getSettingsKey(settings)
+  const duration = options.duration ?? ENVIRONMENT_TRANSITION_DURATION
+  const nextKey = getSettingsKey(settings) + (options.allowedWeather && options.allowedWeather.length < WEATHER_PRESETS.length ? `:${options.allowedWeather.join(',')}` : '') + (options.realTime ? ':device-time' : '')
 
   if (nextKey !== frame.settingsKey) {
     frame.source = copyEnvironmentSnapshot(frame.snapshot)
-    frame.target = createEnvironmentSnapshot(auto, settings)
+    frame.target = createEnvironmentSnapshot(auto, settings, undefined, options.allowedWeather)
     frame.progress = 0
     frame.elapsed = 0
     frame.active = true
@@ -248,27 +258,27 @@ export function stepEnvironmentTransition(
   }
 
   if (!frame.active) {
-    createEnvironmentSnapshot(auto, settings, frame.target)
+    createEnvironmentSnapshot(auto, settings, frame.target, options.allowedWeather)
     copyEnvironmentSnapshot(frame.target, frame.source)
     copyEnvironmentSnapshot(frame.target, frame.snapshot)
     frame.progress = 1
-    frame.elapsed = ENVIRONMENT_TRANSITION_DURATION
+    frame.elapsed = duration
     return frame
   }
 
-  createEnvironmentSnapshot(auto, settings, frame.target)
+  createEnvironmentSnapshot(auto, settings, frame.target, options.allowedWeather)
   const delta = Number.isFinite(deltaSeconds)
     ? clamp(deltaSeconds, 0, 0.5)
     : 0
   frame.elapsed = Math.min(
-    ENVIRONMENT_TRANSITION_DURATION,
+    duration,
     frame.elapsed + delta,
   )
   const completed =
-    frame.elapsed >= ENVIRONMENT_TRANSITION_DURATION - 1e-9
+    frame.elapsed >= duration - 1e-9
   const linearProgress = completed
     ? 1
-    : frame.elapsed / ENVIRONMENT_TRANSITION_DURATION
+    : frame.elapsed / duration
   frame.progress = easeInOut(linearProgress)
 
   createSnapshot(
@@ -290,7 +300,7 @@ export function stepEnvironmentTransition(
   )
 
   if (completed) {
-    frame.elapsed = ENVIRONMENT_TRANSITION_DURATION
+    frame.elapsed = duration
     frame.progress = 1
     frame.active = false
     copyEnvironmentSnapshot(frame.target, frame.source)

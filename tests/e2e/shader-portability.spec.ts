@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('renders continuous clouds across texture seams and celestial zenith', async ({ page }) => {
+test('renders continuous clouds and view-dependent wet grass lighting at celestial zenith', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
@@ -10,6 +10,8 @@ test('renders continuous clouds across texture seams and celestial zenith', asyn
     const shaderPath = '/src/scene/cloudShaders.ts'
     const noisePath = '/src/scene/cloudNoise.tsx'
     const { cloudFieldChunk } = await import(shaderPath)
+    const grassShaderPath = '/src/scene/grassShaders.ts'
+    const { grassWetLightingChunk } = await import(grassShaderPath)
     const { createCloudNoiseData, CLOUD_NOISE_SIZE } = await import(noisePath)
     const canvas = document.createElement('canvas')
     canvas.width = 512
@@ -29,11 +31,18 @@ test('renders continuous clouds across texture seams and celestial zenith', asyn
       precision highp float;
       #define texture2D texture
       ${cloudFieldChunk}
+      ${grassWetLightingChunk}
       uniform vec2 drift;
       uniform vec3 lightDirection;
       uniform bool edgeOnly;
+      uniform bool wetOnly;
+      uniform vec3 viewDirection;
       out vec4 color;
       void main() {
+        if (wetOnly) {
+          color = vec4(vec3(wetGrassSpecular(vec3(0.0, 1.0, 0.0), lightDirection, viewDirection, 1.0)), 1.0);
+          return;
+        }
         vec2 p = vec2(gl_FragCoord.x / 512.0 * 8.0 - 4.0, gl_FragCoord.y / 64.0 * 2.0 - 1.0);
         float density = cloudDensity(p / .035, drift, .9);
         float value = edgeOnly ? cloudLightEdge(p / .035, density, lightDirection, drift, .9) : density;
@@ -86,12 +95,29 @@ test('renders continuous clouds across texture seams and celestial zenith', asyn
       zenithEdge = Math.max(zenithEdge, zenithFrames[1][i])
     }
     const zenithError = gl.getError()
+    gl.uniform1i(gl.getUniformLocation(program, 'wetOnly'), 1)
+    const wetHighlights = []
+    for (const [light, view] of [
+      [[0, 1, 0], [0, .08, Math.sqrt(1 - .08 * .08)]],
+      [[0, 1, 0], [0, 1, 0]],
+      [[0, -1, 0], [0, 1, 0]],
+      // Low sun opposite the viewer previously whitened the whole flat canopy.
+      [[.3329, .3090, -.8911], [-.3329, -.08, .9395]],
+    ]) {
+      gl.uniform3fv(gl.getUniformLocation(program, 'lightDirection'), light)
+      gl.uniform3fv(gl.getUniformLocation(program, 'viewDirection'), view)
+      gl.drawArrays(gl.TRIANGLES, 0, 3)
+      const pixel = new Uint8Array(4)
+      gl.readPixels(256, 32, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+      wetHighlights.push(pixel[0])
+    }
+    const wetError = gl.getError()
     gl.deleteTexture(texture)
     gl.deleteProgram(program)
     gl.deleteShader(vertex)
     gl.deleteShader(fragment)
     gl.getExtension('WEBGL_lose_context')?.loseContext()
-    return { field: results, zenithJump, zenithEdge, zenithError }
+    return { field: results, zenithJump, zenithEdge, zenithError, wetHighlights, wetError }
   })
   for (const sample of samples.field) {
     expect(sample.error).toBe(0)
@@ -102,5 +128,11 @@ test('renders continuous clouds across texture seams and celestial zenith', asyn
   expect(samples.zenithError).toBe(0)
   expect(samples.zenithEdge).toBe(0)
   expect(samples.zenithJump).toBeLessThan(4)
+  expect(samples.wetError).toBe(0)
+  expect(samples.wetHighlights[0]).toBeLessThan(4)
+    expect(samples.wetHighlights[1]).toBeGreaterThan(0)
+    expect(samples.wetHighlights[1]).toBeLessThan(16)
+  expect(samples.wetHighlights[2]).toBe(0)
+    expect(samples.wetHighlights[3]).toBeLessThan(16)
   expect(errors).toEqual([])
 })

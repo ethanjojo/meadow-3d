@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('persists advanced scene preferences and supports keyboard tabs', async ({ page }) => {
+  test.slow()
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('/')
@@ -18,28 +19,39 @@ test('persists advanced scene preferences and supports keyboard tabs', async ({ 
     await page.getByRole('button', { name: 'Environment settings' }).click()
     await page.getByRole('button', { name: 'Advanced', exact: true }).click()
   }
+  const group = (name: string) => page.locator('summary').filter({ hasText: name })
   await open()
   await page.getByRole('tab', { name: 'Sound', exact: true }).focus()
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: 'Scene', exact: true })).toBeFocused()
+  await expect(page.getByRole('tab', { name: 'Nature', exact: true })).toBeFocused()
   await page.getByRole('slider', { name: 'Flower density' }).fill('0')
-  await page.getByRole('switch', { name: /Shooting stars/ }).uncheck()
-  await page.getByRole('switch', { name: /Lightning flashes/ }).uncheck()
-  await page.getByRole('slider', { name: 'Rain & snow particles' }).fill('0')
+  await group('Wind & motion').click()
+  await page.getByRole('switch', { name: 'Gentler motion', exact: true }).check()
+  await page.getByRole('tab', { name: 'Sky & weather', exact: true }).click()
+  await group('Stars & meteors').click()
+  await page.getByRole('switch', { name: 'Shooting stars', exact: true }).uncheck()
   await page.getByRole('slider', { name: 'Star brightness' }).fill('0')
-  await page.getByRole('switch', { name: /Gentler motion/ }).check()
+  await group('Storm').click()
+  await page.getByRole('switch', { name: 'Lightning flashes', exact: true }).uncheck()
+  await group('Rain & snow').click()
+  await page.getByRole('slider', { name: 'Rain & snow particles' }).fill('0')
   await page.getByRole('button', { name: 'Close advanced settings' }).click()
   await expect(page.getByRole('button', { name: 'Environment settings' })).toBeFocused()
   await page.reload()
   await open()
-  await page.getByRole('tab', { name: 'Scene', exact: true }).click()
+  await page.getByRole('tab', { name: 'Nature', exact: true }).click()
   await expect(page.getByRole('slider', { name: 'Flower density' })).toHaveValue('0')
-  await expect(page.getByRole('switch', { name: /Shooting stars/ })).not.toBeChecked()
-  await expect(page.getByRole('switch', { name: /Gentler motion/ })).toBeChecked()
-  await page.getByRole('button', { name: 'Reset scene' }).click()
+  await group('Wind & motion').click()
+  await expect(page.getByRole('switch', { name: 'Gentler motion', exact: true })).toBeChecked()
+  await page.getByRole('button', { name: 'Reset nature' }).click()
   await expect(page.getByRole('slider', { name: 'Flower density' })).toHaveValue('33')
-  await expect(page.getByRole('switch', { name: /Lightning flashes/ })).toBeChecked()
+  await page.getByRole('tab', { name: 'Sky & weather', exact: true }).click()
+  await group('Stars & meteors').click()
+  await expect(page.getByRole('switch', { name: 'Shooting stars', exact: true })).not.toBeChecked()
+  await page.getByRole('button', { name: 'Reset sky & weather' }).click()
+  await expect(page.getByRole('switch', { name: 'Shooting stars', exact: true })).toBeChecked()
   await page.getByRole('tab', { name: 'Sound', exact: true }).click()
+  await group('Farm animals').click()
   await expect(page.getByRole('slider', { name: 'Cow', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   expect(errors).toEqual([])
@@ -54,6 +66,9 @@ test('loads the meadow and toggles ambience without page errors', async ({
   await page.goto('/')
   await expect(page).toHaveTitle('Living Meadow')
   await expect(page.getByRole('main', { name: 'Living Meadow' })).toBeVisible()
+
+  const supportsWebAudio = await page.evaluate(() => Boolean(window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext))
+  test.skip(!supportsWebAudio, 'This browser engine build does not expose Web Audio; native audio activation cannot be verified here.')
 
   const sound = page.getByRole('button', { name: 'Turn sound on' })
   await expect(sound).toBeVisible()
@@ -178,13 +193,23 @@ test('completes a manual environment crossfade without accelerating auto time', 
   const previousRevision = Number(
     await main.getAttribute('data-transition-revision'),
   )
+  // Capture the first published transition frame, before a slow browser driver
+  // can spend part of the three-second transition checking UI assertions.
+  const firstTransitionSample = main.evaluate((element, revision) => new Promise<number>(resolve => {
+    const observer = new MutationObserver(() => {
+      if (Number((element as HTMLElement).dataset.transitionRevision) <= revision) return
+      observer.disconnect()
+      resolve(Number((element as HTMLElement).dataset.autoElapsed))
+    })
+    observer.observe(element, { attributes: true, attributeFilter: ['data-transition-revision'] })
+  }), previousRevision)
   await page.getByRole('radio', { name: 'Snow' }).check({ force: true })
   await expect(main).toHaveAttribute('data-weather', 'snow')
   await expect
     .poll(async () => Number(await main.getAttribute('data-transition-revision')))
     .toBeGreaterThan(previousRevision)
 
-  const before = Number(await main.getAttribute('data-auto-elapsed'))
+  const before = await firstTransitionSample
   await expect(main).toHaveAttribute('data-transition-active', 'false', {
     timeout: 5_500,
   })

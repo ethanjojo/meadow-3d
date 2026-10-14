@@ -289,7 +289,7 @@ export interface FlowerLayout {
   colorVariation: Float32Array
 }
 
-export function createFlowerLayout(count: number, seed: number): FlowerLayout {
+export function createFlowerLayout(count: number, seed: number, mix = {daisy: .68, buttercup: .32, cornflower: 0}): FlowerLayout {
   const flowerCount = Math.max(0, Math.floor(count))
   const random = createMulberry32(seed)
   const offsets = new Float32Array(flowerCount * 3)
@@ -299,13 +299,15 @@ export function createFlowerLayout(count: number, seed: number): FlowerLayout {
   const colorVariation = new Float32Array(flowerCount)
   let cluster = sampleBandPoint('foreground', random)
   let clusterRemaining = 0
-  let yellowCluster = false
+  let species = 0
+  const total = mix.daisy + mix.buttercup + mix.cornflower || 1
 
   for (let index = 0; index < flowerCount; index += 1) {
     if (clusterRemaining === 0) {
       cluster = sampleBandPoint('foreground', random)
       clusterRemaining = 3 + Math.floor(random() * 5)
-      yellowCluster = random() > 0.7
+      const choice = random() * total
+      species = choice < mix.daisy ? 0 : choice < mix.daisy + mix.buttercup ? 1 : 2
     }
     clusterRemaining -= 1
     const radius = Math.sqrt(random()) * (0.22 + random() * 0.48)
@@ -324,7 +326,7 @@ export function createFlowerLayout(count: number, seed: number): FlowerLayout {
     scales[index] = (0.72 + random() * 0.56) * (0.7 + patchNoise * 0.6)
     phases[index] = random() * Math.PI * 2
     yaws[index] = random() * Math.PI * 2
-    colorVariation[index] = yellowCluster ? 0.72 + random() * 0.28 : random() * 0.62
+    colorVariation[index] = species === 2 ? 1.1 + random() * .2 : species === 1 ? 0.72 + random() * 0.28 : random() * 0.62
   }
 
   return { offsets, scales, phases, yaws, colorVariation }

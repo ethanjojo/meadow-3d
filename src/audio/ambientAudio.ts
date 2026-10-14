@@ -2,9 +2,9 @@ import type {
   EnvironmentSnapshot,
   EnvironmentTransitionFrame,
 } from '../core/simulation'
-import { createFarmAudio } from './farmAudio'
-import { createBirdAudio, deriveBirdActivity } from './birdAudio'
-import { BIRD_CHANNELS, DEFAULT_AUDIO_SETTINGS, type AudioChannelId, type AudioSettings } from '../core/audioSettings'
+import { createRecordedCalls } from './recordedCalls'
+import { DEFAULT_SCENE_SETTINGS, type SceneSettings } from '../core/sceneSettings'
+import { DEFAULT_AUDIO_SETTINGS, type AudioChannelId, type AudioSettings } from '../core/audioSettings'
 import { playVoice } from './playVoice'
 import { createThunderAudio } from './thunderAudio'
 
@@ -12,6 +12,7 @@ export interface AmbientAudioController {
   start: () => Promise<boolean>
   setNature: (frame: EnvironmentTransitionFrame) => void
   setAudioSettings: (settings: AudioSettings) => void
+  setSceneSettings?: (settings: SceneSettings) => void
   preview: (id: AudioChannelId, onEnded: () => void) => Promise<boolean>
   stopPreview: () => void
   suspend: () => Promise<void>
@@ -23,8 +24,6 @@ export interface AmbientAudioMix {
   windGain: number
   windFrequency: number
   rainGain: number
-  dayGain: number
-  birdGain: number
 }
 
 function clamp01(value: number) {
@@ -34,15 +33,10 @@ function clamp01(value: number) {
 export function deriveAmbientAudioMix(
   snapshot: EnvironmentSnapshot,
 ): AmbientAudioMix {
-  const solarHeight = Math.sin(snapshot.dayPhase * Math.PI * 2 - Math.PI / 2)
-  const day = clamp01(solarHeight * 1.8)
-
   return {
     windGain: 0.012 + snapshot.weather.windStrength * 0.035,
     windFrequency: 420 + snapshot.weather.windStrength * 1_150,
     rainGain: snapshot.weather.rain * 0.032 + snapshot.weather.storm * 0.012,
-    dayGain: day * (1 - snapshot.weather.rain * 0.58),
-    birdGain: deriveBirdActivity(snapshot.dayPhase, snapshot.weather.rain, snapshot.weather.storm),
   }
 }
 
@@ -58,8 +52,6 @@ function blendAmbientAudioMix(
       source.windFrequency +
       (target.windFrequency - source.windFrequency) * blend,
     rainGain: source.rainGain + (target.rainGain - source.rainGain) * blend,
-    dayGain: source.dayGain + (target.dayGain - source.dayGain) * blend,
-    birdGain: source.birdGain + (target.birdGain - source.birdGain) * blend,
   }
 }
 
@@ -93,8 +85,9 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
   let frozenMix: AmbientAudioMix | null = null
   let lastAppliedMix: AmbientAudioMix | null = null
   let lastRevision = -1
-  let farm: ReturnType<typeof createFarmAudio> | null = null
-  let birds: ReturnType<typeof createBirdAudio> | null = null
+  let recordings: ReturnType<typeof createRecordedCalls> | null = null
+  let sceneSettings = DEFAULT_SCENE_SETTINGS
+  let lastSnapshot: EnvironmentSnapshot | null = null
   let thunder: ReturnType<typeof createThunderAudio> | null = null
   let noiseBuffer: AudioBuffer | null = null
   let ambientRunning = false
@@ -134,14 +127,11 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
     masterGain = context.createGain()
     masterGain.gain.value = 0
     masterGain.connect(context.destination)
-    farm = createFarmAudio(context, masterGain)
-    birds = createBirdAudio(context, masterGain)
+    recordings = createRecordedCalls(context, masterGain, settings)
+    if (lastSnapshot) recordings.setNature(lastSnapshot)
     thunder = createThunderAudio(context, masterGain)
-    thunder.setLevel(settings.channels.thunder)
-    farm.setChannelVolumes(settings.channels)
-    birds.setChannelVolumes(settings.channels)
-    farm.setDayGain(lastAppliedMix?.dayGain ?? 0)
-    birds.setActivity(lastAppliedMix?.birdGain ?? 0)
+    thunder.setLevel(settings.channels.thunder * settings.groups.weather)
+    thunder.setOptions({ interval: sceneSettings.lightningInterval, distanceKm: settings.thunderDistance })
     noiseBuffer = context.createBuffer(
       1,
       context.sampleRate * 2,
@@ -165,7 +155,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
     windSource.loop = true
     windFilter.type = 'lowpass'
     windFilter.frequency.value = 720
-    windGain.gain.value = 0.022 * settings.channels.wind
+    windGain.gain.value = 0.022 * settings.channels.wind * settings.groups.weather
     rainSource.buffer = noiseBuffer
     rainSource.loop = true
     rainFilter.type = 'highpass'
@@ -198,8 +188,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       }
       ambientRunning = true
       masterGain?.gain.setTargetAtTime(settings.master, context!.currentTime, 0.06)
-      void farm?.start()
-      void birds?.start()
+      void recordings?.start()
       thunder?.start()
       return true
     } catch {
@@ -215,11 +204,11 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       settings = next
       if (!context) return
       masterGain?.gain.setTargetAtTime(ambientRunning ? settings.master : 0, context.currentTime, 0.06)
-      farm?.setChannelVolumes(settings.channels)
-      birds?.setChannelVolumes(settings.channels)
-      thunder?.setLevel(settings.channels.thunder)
-      windGain?.gain.setTargetAtTime((lastAppliedMix?.windGain ?? 0.022) * settings.channels.wind, context.currentTime, 0.06)
-      rainGain?.gain.setTargetAtTime((lastAppliedMix?.rainGain ?? 0) * settings.channels.rain, context.currentTime, 0.06)
+      recordings?.setSettings(settings)
+      thunder?.setLevel(settings.channels.thunder * settings.groups.weather)
+      thunder?.setOptions({ interval: sceneSettings.lightningInterval, distanceKm: settings.thunderDistance })
+      windGain?.gain.setTargetAtTime((lastAppliedMix?.windGain ?? 0.022) * settings.channels.wind * settings.groups.weather, context.currentTime, 0.06)
+      rainGain?.gain.setTargetAtTime((lastAppliedMix?.rainGain ?? 0) * settings.channels.rain * settings.groups.weather, context.currentTime, 0.06)
     },
 
     async preview(id, onEnded) {
@@ -247,10 +236,9 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
         if (id === 'wind' || id === 'rain') {
           cancelPreview = playVoice(audio, noiseBuffer!, { duration: 2, volume: 0.06, rate: 1, pan: 0, cutoff: id === 'wind' ? 720 : 1_650, filterType: id === 'wind' ? 'lowpass' : 'highpass' }, audio.destination, finished).stop
         } else {
-          const player = BIRD_CHANNELS.some(channel => channel.id === id) ? birds : farm
           const cancel = id === 'thunder'
             ? await thunder!.preview(() => revision === previewRevision, finished)
-            : await player!.preview(id, () => revision === previewRevision, finished)
+            : await recordings!.preview(id, () => revision === previewRevision, finished)
           if (revision !== previewRevision) { cancel?.(); return false }
           cancelPreview = cancel
         }
@@ -266,7 +254,14 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
     },
     stopPreview,
 
+    setSceneSettings(next) {
+      sceneSettings = next
+      thunder?.setOptions({ interval: next.lightningInterval, distanceKm: settings.thunderDistance })
+    },
+
     setNature(frame) {
+      lastSnapshot = frame.snapshot
+      recordings?.setNature(frame.snapshot)
       thunder?.sync(frame.snapshot)
       const sourceMix = deriveAmbientAudioMix(frame.source)
       const targetMix = deriveAmbientAudioMix(frame.target)
@@ -281,13 +276,11 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
         targetMix,
         frame.progress,
       )
-      farm?.setDayGain(mix.dayGain)
-      birds?.setActivity(mix.birdGain)
       lastAppliedMix = mix
       if (!context || !windGain || !windFilter) return
       const now = context.currentTime
       windGain.gain.setTargetAtTime(
-        mix.windGain * settings.channels.wind,
+        mix.windGain * settings.channels.wind * settings.groups.weather,
         now,
         0.35,
       )
@@ -297,7 +290,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
         0.45,
       )
       rainGain?.gain.setTargetAtTime(
-        mix.rainGain * settings.channels.rain,
+        mix.rainGain * settings.channels.rain * settings.groups.weather,
         now,
         0.28,
       )
@@ -308,8 +301,7 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       ambientRunning = false
       stopPreview()
       masterGain?.gain.setValueAtTime(0, context?.currentTime ?? 0)
-      farm?.suspend()
-      birds?.suspend()
+      recordings?.suspend()
       thunder?.suspend()
       if (context?.state === 'running') await context.suspend()
     },
@@ -322,10 +314,8 @@ export function createAmbientAudio(initialSettings = DEFAULT_AUDIO_SETTINGS): Am
       activationRevision++
       ambientRunning = false
       stopPreview()
-      farm?.dispose()
-      farm = null
-      birds?.dispose()
-      birds = null
+      recordings?.dispose()
+      recordings = null
       thunder?.dispose()
       thunder = null
       try {

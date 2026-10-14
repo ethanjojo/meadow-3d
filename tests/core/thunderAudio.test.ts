@@ -17,6 +17,19 @@ function setup() {
   return { thunder, event, snapshot }
 }
 describe('delayed storm audio', () => {
+  it('uses the configured shared storm interval and distance and cancels the previous schedule', async () => {
+    const { thunder, snapshot } = setup()
+    thunder.sync(snapshot)
+    thunder.setOptions({ interval: 20, distanceKm: 1.2 })
+    const event = getStormEvent(15, { interval: 20, distanceKm: 1.2 })
+    snapshot.elapsed = event.start + .05
+    thunder.sync(snapshot)
+    await vi.advanceTimersByTimeAsync((event.thunderAt - snapshot.elapsed) * 1000 + 1)
+    expect(player.trigger).toHaveBeenCalledOnce()
+    expect(player.trigger.mock.calls[0][0]).toBe('close')
+    expect(player.trigger.mock.calls[0][1]).toMatchObject({ volume: .65 / (1 + 1.2 * .22) })
+    thunder.dispose()
+  })
   it('plays one thunder sound after the visible event, never at the flash', async () => {
     const { thunder, event, snapshot } = setup()
     thunder.sync(snapshot); thunder.sync(snapshot)

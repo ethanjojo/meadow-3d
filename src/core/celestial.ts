@@ -292,14 +292,15 @@ export function getShootingStarState(
   seed: number,
   slot: number,
   nightAmount: number,
+  interval = 95,
 ): ShootingStarState {
   const safeElapsed = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0)
   const safeSlot = Math.max(0, Math.floor(Number.isFinite(slot) ? slot : 0))
-  const cycle = 95
+  const cycle = Math.max(10, interval)
   const window = Math.floor(safeElapsed / cycle)
   const windowTime = safeElapsed - window * cycle
   const eventSeed = (Math.floor(seed) || 0) + window * 7_919
-  const eventStart = 8 + hash(eventSeed) * 43
+  const eventStart = (8 + hash(eventSeed) * 43) * cycle / 95
   const duration = .7 + hash(eventSeed + 1) * .65
   const paired = hash(eventSeed + 9) > .9 && safeSlot % 3 === (window + 1) % 3
   const offset = paired ? 3.2 + hash(eventSeed + 10) * 1.6 : 0
@@ -332,10 +333,11 @@ export function projectShootingStarTrail(
     head: [0, 0, 0],
     tail: [0, 0, 0],
   },
+  trailLength = 1,
 ): ShootingStarTrail {
   const tailProgress = Math.max(
     0,
-    state.progress - (reducedMotion ? 0.22 : 0.38),
+    state.progress - (reducedMotion ? 0.22 : 0.38) * trailLength,
   )
   const project = (progress: number, point: ShootingStarTrail['head']) => {
     point[0] = (state.start[0] + state.direction[0] * progress) * 0.72

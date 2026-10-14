@@ -10,9 +10,22 @@ export const cloudShadowChunk = /* glsl */ `
     return cloudDensity(worldXZ, drift, cover);
   }
 `
+
+export const grassWetLightingChunk = /* glsl */ `
+  float wetGrassSpecular(vec3 normal, vec3 lightDirection, vec3 viewDirection, float roughness) {
+    // Reflections depend on the viewer, not the diffuse light-facing angle.
+    vec3 halfway = lightDirection + viewDirection;
+    halfway /= max(length(halfway), 0.0001);
+    // A wet dielectric surface reflects only a small fraction of the light.
+    // Bound grazing reflections too, so a field never becomes a white mirror.
+    float fresnel = 0.02 + 0.04 * pow(1.0 - clamp(dot(viewDirection, halfway), 0.0, 1.0), 5.0);
+    return pow(max(dot(normal, halfway), 0.0), mix(48.0, 96.0, roughness)) * fresnel;
+  }
+`
 export const grassVertexShader = /* glsl */ `
   attribute vec3 instanceOffset;
   attribute float instanceScale;
+  uniform float uHeight;
   attribute float instancePhase;
   attribute float instanceStiffness;
   attribute float instanceYaw;
@@ -33,8 +46,10 @@ export const grassVertexShader = /* glsl */ `
   varying float vVariation;
   varying float vViewDepth;
   varying vec3 vBladeNormal;
+  varying vec3 vSurfaceNormal;
   varying vec2 vAtlasUv;
   varying vec2 vWorldXZ;
+  varying vec3 vViewDirection;
 
   mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -52,7 +67,7 @@ export const grassVertexShader = /* glsl */ `
     float clearanceLean = cameraClearance;
     float clearanceWind = cameraClearance;
     vec3 localPosition = position;
-    localPosition.y *= instanceScale * clearanceHeight;
+    localPosition.y *= instanceScale * clearanceHeight * uHeight;
     localPosition.xz *= instanceWidth;
     localPosition.xz = rotate2d(instanceYaw) * localPosition.xz;
 
@@ -93,6 +108,7 @@ export const grassVertexShader = /* glsl */ `
     vec4 viewPosition = viewMatrix * worldPosition;
     gl_Position = projectionMatrix * viewPosition;
     vWorldXZ = worldPosition.xz;
+    vViewDirection = cameraPosition - worldPosition.xyz;
 
     vHeight = heightRatio;
     vVariation = instanceColorVariation;
@@ -108,6 +124,9 @@ export const grassVertexShader = /* glsl */ `
       1.0,
       -windDirection.y * curvatureAngle * 0.5
     ));
+    vec2 surfaceXZ = rotate2d(instanceYaw) * normal.xz;
+    vec2 slope = windDirection * curvatureAngle * 2.0 + vec2(instanceLean * rootFade, 0.0);
+    vSurfaceNormal = normalize(vec3(surfaceXZ.x, normal.y - dot(surfaceXZ, slope), surfaceXZ.y));
   }
 `
 
@@ -147,10 +166,13 @@ export const grassFragmentShader = /* glsl */ `
   varying float vVariation;
   varying float vViewDepth;
   varying vec3 vBladeNormal;
+  varying vec3 vSurfaceNormal;
   varying vec2 vAtlasUv;
   varying vec2 vWorldXZ;
+  varying vec3 vViewDirection;
 
   ${cloudShadowChunk}
+  ${grassWetLightingChunk}
 
   void main() {
     vec4 atlasColor = vec4(1.0);
@@ -203,15 +225,19 @@ export const grassFragmentShader = /* glsl */ `
       uWindDirection * uCloudPhase,
       uShadowCover
     );
-    light *= 1.0 - cloudShade * uShadowStrength * 0.42;
+    float cloudTransmission = 1.0 - cloudShade * uShadowStrength * 0.42;
+    light *= cloudTransmission;
     vec3 litColor = grassColor * light;
     #ifndef SIMPLE_GRASS_LIGHTING
     float roughness = mix(1.0, surfaceData.r, uUseAtlas);
+    vec3 viewDirection = normalize(vViewDirection);
+    vec3 surfaceNormal = normalize(vSurfaceNormal);
+    if (dot(surfaceNormal, viewDirection) < 0.0) surfaceNormal = -surfaceNormal;
     float wetHighlight =
       uWetness *
-      pow(sunFacing, mix(14.0, 24.0, roughness)) *
+      wetGrassSpecular(surfaceNormal, uSunDirection, viewDirection, roughness) *
       (0.18 + lowerBlade * 0.32);
-    litColor += uSunColor * wetHighlight * uSunIntensity;
+    litColor += uSunColor * wetHighlight * uSunIntensity * cloudTransmission;
     float backlight = max(dot(-normal, uSunDirection), 0.0);
     float transmission =
       uUseTransmission *

@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
@@ -23,6 +24,7 @@ import {
 import { getBloomEmissionScale } from './postProcessingShaders'
 
 interface WeatherParticlesProps {
+  sceneSettings: SceneSettings
   fireflyDensity: number
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
@@ -220,7 +222,7 @@ function createParticleMaterial(
   })
 }
 
-export function WeatherParticles({
+export function WeatherParticles({ sceneSettings,
   fireflyDensity,
   quality,
   snapshotRef,
@@ -247,11 +249,11 @@ export function WeatherParticles({
         '#d9ed72',
         3.8,
         0,
-        getBloomEmissionScale(quality.postprocessing, 'firefly'),
+        getBloomEmissionScale(quality.postprocessing && quality.bloomStrength > 0, 'firefly'),
       ),
       createParticleMaterial(4, '#cfe0ea', 3.4, 0),
     ],
-    [quality.postprocessing],
+    [quality.postprocessing, quality.bloomStrength],
   )
 
   useEffect(() => {
@@ -271,23 +273,29 @@ export function WeatherParticles({
     [geometry, fireflyGeometry, materials],
   )
 
+  const particleTimes = useRef<number[]>([])
+  const previousElapsed = useRef<number | null>(null)
   useFrame(() => {
     if (!visible) return
 
     const snapshot = snapshotRef.current
     const effects = effectsRef.current
+    const elapsedDelta = previousElapsed.current === null ? 0 : Math.max(0, snapshot.elapsed - previousElapsed.current)
+    previousElapsed.current = snapshot.elapsed
 
     for (let index = 0; index < materials.length; index += 1) {
-      materials[index].uniforms.uTime.value = snapshot.elapsed
+      const speed = index === 1 ? sceneSettings.rainSpeed : index === 2 ? sceneSettings.snowSpeed : index === 3 ? sceneSettings.fireflySpeed : 1
+      particleTimes.current[index] = (particleTimes.current[index] ?? snapshot.elapsed) + elapsedDelta * speed
+      materials[index].uniforms.uTime.value = particleTimes.current[index]
       materials[index].uniforms.uMotion.value = reducedMotion ? .25 : 1
-      materials[index].uniforms.uWindStrength.value = snapshot.weather.windStrength
+      materials[index].uniforms.uWindStrength.value = snapshot.weather.windStrength * (index === 1 || index === 2 || index === 4 ? sceneSettings.precipitationWind : 1)
       materials[index].uniforms.uWindDirection.value
         .set(...snapshot.weather.windDirection)
         .normalize()
     }
     deriveRainStreakOrientation(
       snapshot.weather.windDirection,
-      snapshot.weather.windStrength,
+      snapshot.weather.windStrength * sceneSettings.precipitationWind,
       materials[1].uniforms.uRainStreakOrientation.value,
     )
     materials[0].uniforms.uOpacity.value = effects.pollen * seasonRef.current.pollen

@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Mesh, ShaderMaterial, Vector2, Vector3 } from 'three'
@@ -9,10 +10,11 @@ import { cloudFieldChunk } from './cloudShaders'
 import { useCloudNoise } from './cloudNoise'
 
 interface ShootingStarsProps {
+  sceneSettings: SceneSettings
   quality: QualityProfile; snapshotRef: MutableRefObject<EnvironmentSnapshot>; atmosphereRef: MutableRefObject<AtmosphereState>; reducedMotion: boolean; visible: boolean
 }
 
-export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMotion, visible }: ShootingStarsProps) {
+export function ShootingStars({ sceneSettings, quality, snapshotRef, atmosphereRef, reducedMotion, visible }: ShootingStarsProps) {
   const cloudNoise = useCloudNoise()
   const refs = useRef<Array<Mesh | null>>([])
   const trails = useMemo(() => Array.from({ length: quality.shootingStarPool }, (_, slot) => {
@@ -56,15 +58,15 @@ export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMoti
     const snapshot = snapshotRef.current, atmosphere = atmosphereRef.current
     const elapsed = forced ?? snapshot.autoElapsed
     for (let slot = 0; slot < trails.length; slot++) {
-      let state = getShootingStarState(elapsed, 731, slot, atmosphere.starOpacity)
+      let state = getShootingStarState(elapsed, 731, slot, atmosphere.starOpacity, sceneSettings.meteorInterval)
       // Reuse each allocated trail for all logical lanes on lower quality tiers.
       for (let lane = slot + trails.length; lane < 3 && !state.active; lane += trails.length) {
-        state = getShootingStarState(elapsed, 731, lane, atmosphere.starOpacity)
+        state = getShootingStarState(elapsed, 731, lane, atmosphere.starOpacity, sceneSettings.meteorInterval)
       }
       const trail = trails[slot]
       if (refs.current[slot]) refs.current[slot]!.visible = state.active && state.brightness > .002
       if (!state.active) continue
-      projectShootingStarTrail(state, reducedMotion, projected)
+      projectShootingStarTrail(state, reducedMotion, projected, sceneSettings.meteorTrail)
       const dx = projected.head[0] - projected.tail[0], dy = projected.head[1] - projected.tail[1]
       const length = Math.hypot(dx,dy) || 1
       const px = -dy / length * .006 / (size.width / size.height), py = dx / length * .006
@@ -76,7 +78,7 @@ export function ShootingStars({ quality, snapshotRef, atmosphereRef, reducedMoti
         positions.setXYZ(vertex,point.x,point.y,point.z)
       }
       positions.needsUpdate = true
-      trail.material.uniforms.uOpacity.value = state.brightness * (reducedMotion ? .45 : 1.25)
+      trail.material.uniforms.uOpacity.value = state.brightness * sceneSettings.meteorBrightness * (reducedMotion ? .45 : 1.25)
       trail.material.uniforms.uCover.value = snapshot.weather.cloudCover
       trail.material.uniforms.uDrift.value.set(...snapshot.weather.windDirection).normalize().multiplyScalar(atmosphere.cloudPhase)
     }

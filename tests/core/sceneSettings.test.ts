@@ -9,6 +9,7 @@ describe('scene preferences', () => {
       farmLights: true,
     })
     expect(parseSceneSettings({ farmLights: false }).farmLights).toBe(false)
+    expect(parseSceneSettings({ dayDuration: -1, quality: 'broken', allowedWeather: [], moonPhase: Infinity })).toMatchObject({ dayDuration: 60, quality: 'auto', allowedWeather: ['clear'], moonPhase: .5 })
   })
   it('preserves the sparse default and bounded device-specific flower budgets', () => {
     expect(getFlowerCount(240, parseSceneSettings(null))).toBe(240)

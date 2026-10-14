@@ -4,7 +4,7 @@ import {
 } from 'three'
 import type { FlowerLayout } from '../core/grassLayout'
 
-export type FlowerSpecies = 'daisy' | 'buttercup'
+export type FlowerSpecies = 'daisy' | 'buttercup' | 'cornflower'
 export const FLOWER_HEAD_HEIGHT = 0.56
 
 /** One small shared mesh per species/detail level; every plant is GPU-instanced. */
@@ -50,16 +50,16 @@ export function createFlowerGeometry(
     const e = vertex(base + .095 * direction, y + .055, 0, .5, 1, 1)
     indices.push(a, b, c, a, c, d, b, e, c, c, e, d)
   }
-  const petalCount = species === 'daisy' ? (detailed ? 12 : 8) : 5
+  const petalCount = species === 'daisy' ? (detailed ? 12 : 8) : species === 'cornflower' ? (detailed ? 10 : 7) : 5
   const rows = detailed ? 4 : 2
   for (let petal = 0; petal < petalCount; petal += 1) {
     const angle = petal / petalCount * Math.PI * 2
     const start = positions.length / 3
     for (let row = 0; row <= rows; row += 1) {
       const t = row / rows
-      const radius = .012 + t * (species === 'daisy' ? .048 : .035)
-      const width = Math.sin(Math.PI * t) * (species === 'daisy' ? .009 : .016) + .001
-      const cup = species === 'daisy' ? .009 * Math.sin(t * Math.PI) - .008 * t * t : .026 * t * t
+      const radius = .012 + t * (species === 'daisy' ? .048 : species === 'cornflower' ? .043 : .035)
+      const width = Math.sin(Math.PI * t) * (species === 'daisy' ? .009 : species === 'cornflower' ? .007 : .016) + .001
+      const cup = species === 'daisy' ? .009 * Math.sin(t * Math.PI) - .008 * t * t : species === 'cornflower' ? .018 * t * t : .026 * t * t
       for (let side = 0; side < 3; side += 1) {
         const transverse = (side - 1) * width
         vertex(.03 + Math.cos(angle) * radius - Math.sin(angle) * transverse,
@@ -115,7 +115,7 @@ export function createFlowerGeometry(
 export function createFlowerBatches(layout: FlowerLayout, camera: Vector3, detailed: boolean) {
   const groups: Record<string, { species: FlowerSpecies; detailed: boolean; instances: number[] }> = {}
   for (let index = 0; index < layout.scales.length; index += 1) {
-    const species = layout.colorVariation[index] > .68 ? 'buttercup' : 'daisy'
+    const species = layout.colorVariation[index] >= 1 ? 'cornflower' : layout.colorVariation[index] > .68 ? 'buttercup' : 'daisy'
     const near = detailed && Math.hypot(layout.offsets[index * 3] - camera.x, layout.offsets[index * 3 + 2] - camera.z) < 7
     const key = `${species}-${near ? 'near' : 'far'}`
     const group = groups[key] ??= { species, detailed: near, instances: [] }

@@ -8,8 +8,9 @@ export const THUNDER_CALLS = [
 ] as const
 
 export function createThunderAudio(context: AudioContext, destination: AudioNode) {
-  const player = createRecordedAmbience(context, THUNDER_CALLS, () => null, destination)
+  const player = createRecordedAmbience(context, THUNDER_CALLS, destination)
   let running = false, timer: number | null = null, revision = 0, lastEvent = -1, level = 1
+  let options: { interval?: number; distanceKm?: number } = {}
   const cancel = () => {
     revision++
     if (timer !== null) window.clearTimeout(timer)
@@ -18,6 +19,10 @@ export function createThunderAudio(context: AudioContext, destination: AudioNode
   }
   return {
     start() { running = true; void player.prepare() },
+    setOptions(next: { interval?: number; distanceKm?: number }) {
+      if (next.interval !== options.interval || next.distanceKm !== options.distanceKm) { cancel(); lastEvent = -1 }
+      options = next
+    },
     setLevel(value: number) {
       level = value
       player.setChannelVolumes({ close: value, distant: value })
@@ -26,7 +31,7 @@ export function createThunderAudio(context: AudioContext, destination: AudioNode
     sync(snapshot: EnvironmentSnapshot) {
       if (!running) return
       if (snapshot.weather.storm < .2 || context.state !== 'running') { cancel(); return }
-      const event = getStormEvent(snapshot.elapsed)
+      const event = getStormEvent(snapshot.elapsed, options)
       const age = snapshot.elapsed - event.start
       if (level === 0 || event.id === lastEvent || age < 0 || age > 1) return
       lastEvent = event.id

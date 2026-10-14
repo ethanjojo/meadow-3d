@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { SceneSettings } from '../core/sceneSettings'
 import type { SeasonIndex } from '../core/natureClock'
 import type { AudioChannelId, AudioPreviewState, AudioSettings } from '../core/audioSettings'
@@ -11,6 +11,9 @@ import type {
 const AdvancedSettings = lazy(() => import('./AdvancedSettings').then(module => ({ default: module.AdvancedSettings })))
 
 interface EnvironmentSettingsProps {
+  auroraPreviewActive?: boolean
+  onAuroraPreview?: () => void
+  preferencesTools?: ReactNode
   sceneSettings: SceneSettings
   onSceneChange: (next: SceneSettings) => void
   value: SimulationSettings
@@ -68,6 +71,8 @@ function getEnglishTimeText(dayPhase: number) {
 }
 
 export function EnvironmentSettings({
+  auroraPreviewActive, onAuroraPreview,
+  preferencesTools,
   sceneSettings,
   onSceneChange,
   value,
@@ -215,8 +220,8 @@ export function EnvironmentSettings({
         </section>
       ) : null}
       {advancedOpen ? <Suspense fallback={<span className="settings-loading" role="status">Opening settings…</span>}>
-        <AdvancedSettings sceneSettings={sceneSettings} onSceneChange={onSceneChange} open={advancedOpen} value={audioSettings} enabled={soundEnabled} onChange={onAudioChange} onSoundChange={onSoundChange}
-          onMasterVolumeChange={onMasterVolumeChange} preview={preview} onPreview={onPreview} onStopPreview={onStopPreview}
+        <AdvancedSettings auroraPreviewActive={auroraPreviewActive} onAuroraPreview={onAuroraPreview} sceneSettings={sceneSettings} onSceneChange={onSceneChange} open={advancedOpen} value={audioSettings} enabled={soundEnabled} onChange={onAudioChange} onSoundChange={onSoundChange}
+          preferencesTools={preferencesTools} onMasterVolumeChange={onMasterVolumeChange} preview={preview} onPreview={onPreview} onStopPreview={onStopPreview}
           onClose={() => { setAdvancedOpen(false); triggerRef.current?.focus() }} />
       </Suspense> : null}
     </div>

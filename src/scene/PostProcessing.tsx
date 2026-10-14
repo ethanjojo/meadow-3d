@@ -26,7 +26,7 @@ export function PostProcessing({ quality }: PostProcessingProps) {
     try {
       composer = new EffectComposer(gl)
       const renderPass = new RenderPass(scene, camera)
-      bloomPass = new UnrealBloomPass(
+      if (quality.bloomStrength > 0) bloomPass = new UnrealBloomPass(
         new Vector2(size.width, size.height),
         quality.bloomStrength,
         0.32,
@@ -35,7 +35,7 @@ export function PostProcessing({ quality }: PostProcessingProps) {
       gradePass = new ShaderPass(meadowGradeShader)
       gradePass.uniforms.uVignette.value = quality.vignetteStrength
       composer.addPass(renderPass)
-      composer.addPass(bloomPass)
+      if (bloomPass) composer.addPass(bloomPass)
       composer.addPass(gradePass)
       outputPass = new OutputPass()
       composer.addPass(outputPass)

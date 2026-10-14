@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { AdditiveBlending, BufferAttribute, BufferGeometry, DirectionalLight, Mesh, ShaderMaterial, Vector3 } from 'three'
@@ -26,8 +27,8 @@ function buildSegments(id: number, x: number, branches: number): Segment[] {
   return segments
 }
 
-export function Lightning({ snapshotRef, effectsRef, quality, visible }: {
-  snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects>; quality: QualityProfile; visible: boolean
+export function Lightning({ sceneSettings, stormDistanceKm, snapshotRef, effectsRef, quality, visible }: {
+  sceneSettings: SceneSettings; stormDistanceKm?: number; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects>; quality: QualityProfile; visible: boolean
 }) {
   const meshRef = useRef<Mesh>(null), lightRef = useRef<DirectionalLight>(null)
   const lastEvent = useRef(-1), segmentsRef = useRef<Segment[]>([])
@@ -54,13 +55,13 @@ export function Lightning({ snapshotRef, effectsRef, quality, visible }: {
   useEffect(() => () => material.dispose(), [material])
   useFrame(({ camera, size }) => {
     if (!visible) return
-    const event = getStormEvent(snapshotRef.current.elapsed)
+    const event = getStormEvent(snapshotRef.current.elapsed, { interval: sceneSettings.lightningInterval, distanceKm: stormDistanceKm })
     const flash = effectsRef.current.stormFlash
     if (lightRef.current) {
       lightRef.current.intensity = flash * 2.5
       lightRef.current.position.set(event.x * 55, 45, -40)
     }
-    if (meshRef.current) meshRef.current.visible = event.kind === 'ground' && flash > .001
+    if (meshRef.current) meshRef.current.visible = sceneSettings.groundLightning && event.kind === 'ground' && flash > .001
     material.uniforms.uOpacity.value = flash * 1.4
     if (flash <= .001 || event.kind !== 'ground') return
     if (lastEvent.current !== event.id || !segmentsRef.current.length) {

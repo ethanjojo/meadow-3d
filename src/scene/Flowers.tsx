@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import {
@@ -17,6 +18,7 @@ import { cloudShadowChunk } from './grassShaders'
 import { createFlowerBatches, FLOWER_HEAD_HEIGHT } from './flowerGeometry'
 
 interface FlowersProps {
+  sceneSettings: SceneSettings
   count: number
   detailed: boolean
   reducedMotion: boolean
@@ -29,7 +31,7 @@ interface FlowersProps {
 const FLOWER_VERTEX_SHADER = /* glsl */ `
   attribute vec3 instanceOffset;
   attribute float instanceScale, instancePhase, instanceYaw, instanceColorVariation, flowerPart;
-  uniform float uTime, uWindStrength, uSnowCoverage, uMotion;
+  uniform float uTime, uWindStrength, uSnowCoverage, uMotion, uSize;
   uniform vec2 uWindDirection;
   varying vec2 vFlowerUv, vWorldXZ;
   varying float vViewDepth, vVariation, vPart;
@@ -57,7 +59,7 @@ const FLOWER_VERTEX_SHADER = /* glsl */ `
     float shrink = max(.04, 1.0 - uSnowCoverage * .96);
     float clearance = mix(.12, 1.0, smoothstep(1.2, 5.2, distance(cameraPosition.xz, instanceOffset.xz)));
     float speciesScale = mix(1.0, .78, step(.68, instanceColorVariation));
-    vec3 scale = vec3(1.0, clearance, 1.0) * instanceScale * shrink * speciesScale;
+    vec3 scale = vec3(1.0, clearance, 1.0) * instanceScale * shrink * speciesScale * uSize;
     local *= scale;
     vec4 world = modelMatrix * vec4(local + instanceOffset, 1.0);
     vec4 view = viewMatrix * world;
@@ -84,9 +86,11 @@ const FLOWER_FRAGMENT_SHADER = /* glsl */ `
   void main() {
     float petal = step(1.5, vPart) * (1.0 - step(2.5, vPart));
     float center = step(2.5, vPart);
-    float yellow = step(.68, vVariation);
+    float yellow = step(.68, vVariation) * (1.0 - step(1.0, vVariation));
+    float blue = step(1.0, vVariation);
     vec3 stem = uGrassBase * mix(.78, 1.1, vFlowerUv.y);
     vec3 petals = mix(vec3(.91,.88,.79), vec3(.96,.63,.055), yellow);
+    petals = mix(petals, vec3(.16,.32,.78), blue);
     petals *= .93 + .07 * vFlowerUv.y;
     // Gentle central vein and rounded-tip shading on the actual curved petals.
     petals *= 1.0 - .06 * abs(vFlowerUv.x - .5) * 2.0;
@@ -124,7 +128,7 @@ function createFlowerMaterial() {
     toneMapped: true,
     uniforms: {
       uTime: { value: 0 },
-      uMotion: { value: 1 },
+      uMotion: { value: 1 }, uSize: {value: 1},
       uWindStrength: { value: 0.5 },
       uWindDirection: { value: new Vector2(1, 0) },
       uSnowCoverage: { value: 0 },
@@ -150,7 +154,7 @@ function createFlowerMaterial() {
   })
 }
 
-export function Flowers({
+export function Flowers({ sceneSettings,
   count,
   detailed,
   reducedMotion,
@@ -161,7 +165,7 @@ export function Flowers({
 }: FlowersProps) {
   const cloudNoise = useCloudNoise()
   const camera = useThree(state => state.camera)
-  const batches = useMemo(() => createFlowerBatches(createFlowerLayout(count, 9_461), camera.position, detailed), [count, camera, detailed])
+  const batches = useMemo(() => createFlowerBatches(createFlowerLayout(count, 9_461, {daisy: sceneSettings.daisyRatio, buttercup: sceneSettings.buttercupRatio, cornflower: sceneSettings.cornflowerRatio}), camera.position, detailed), [count, camera, detailed, sceneSettings.daisyRatio, sceneSettings.buttercupRatio, sceneSettings.cornflowerRatio])
   const material = useMemo(() => {
     const result = createFlowerMaterial()
     result.uniforms.uCloudNoise = { value: cloudNoise }
@@ -177,7 +181,8 @@ export function Flowers({
     const atmosphere = atmosphereRef.current
     const { uniforms } = material
     uniforms.uTime.value = snapshot.elapsed
-    uniforms.uMotion.value = reducedMotion ? .25 : 1
+    uniforms.uMotion.value = (reducedMotion ? .25 : 1) * sceneSettings.flowerMotion
+    uniforms.uSize.value = sceneSettings.flowerSize
     uniforms.uCloudPhase.value = atmosphereRef.current.cloudPhase
     uniforms.uWindStrength.value = snapshot.weather.windStrength
     uniforms.uWindDirection.value
@@ -191,7 +196,7 @@ export function Flowers({
     uniforms.uShadowCover.value = snapshot.weather.cloudCover
     uniforms.uShadowStrength.value =
       Math.min(1, atmosphere.sunIntensity / 1.2) *
-      snapshot.weather.cloudCover ** 0.85
+      snapshot.weather.cloudCover ** 0.85 * sceneSettings.cloudShadow
     syncGrassAtmosphereUniforms(uniforms, atmosphere)
   })
 

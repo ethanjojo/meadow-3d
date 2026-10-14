@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import { BackSide, Color, ShaderMaterial, Vector2, Vector3 } from 'three'
@@ -11,6 +12,8 @@ import { useCloudNoise } from './cloudNoise'
 import { getStormEvent } from '../core/sceneEffects'
 
 interface CloudLayerProps {
+  sceneSettings: SceneSettings
+  stormDistanceKm?: number
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
   atmosphereRef: MutableRefObject<AtmosphereState>
@@ -18,7 +21,7 @@ interface CloudLayerProps {
   visible: boolean
 }
 
-export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, visible }: CloudLayerProps) {
+export function CloudLayer({ sceneSettings, stormDistanceKm, quality, snapshotRef, atmosphereRef, effectsRef, visible }: CloudLayerProps) {
   const cloudNoise = useCloudNoise()
   const material = useMemo(() => new ShaderMaterial({
     side: BackSide, transparent: true, depthWrite: false,
@@ -84,7 +87,7 @@ export function CloudLayer({ quality, snapshotRef, atmosphereRef, effectsRef, vi
     material.uniforms.uCover.value = weather.cloudCover
     material.uniforms.uStorm.value = weather.storm
     material.uniforms.uFlash.value = effectsRef.current.stormFlash
-    material.uniforms.uFlashX.value = getStormEvent(snapshotRef.current.elapsed).x
+    material.uniforms.uFlashX.value = getStormEvent(snapshotRef.current.elapsed, {interval: sceneSettings.lightningInterval, distanceKm: stormDistanceKm}).x
     material.uniforms.uDay.value = day
     material.uniforms.uDrift.value.set(...weather.windDirection).normalize().multiplyScalar(state.cloudPhase)
     material.uniforms.uSunWeight.value = getCloudSunWeight(state.sunElevation)

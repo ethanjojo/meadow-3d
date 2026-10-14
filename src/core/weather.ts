@@ -30,6 +30,8 @@ interface WeatherEffectInput {
   seasonPosition: number
   weather: WeatherState
   reducedMotion: boolean
+  stormInterval?: number
+  stormDistanceKm?: number
 }
 
 type WeatherProfile = Readonly<
@@ -160,6 +162,7 @@ export function deriveWeatherEffects({
   seasonPosition,
   weather,
   reducedMotion,
+  stormInterval, stormDistanceKm,
 }: WeatherEffectInput, target?: WeatherEffects): WeatherEffects {
   const solarAngle = dayPhase * Math.PI * 2 - Math.PI / 2
   const daylight = smoothstep(-0.05, 0.18, Math.sin(solarAngle))
@@ -176,7 +179,7 @@ export function deriveWeatherEffects({
   const dewSky = 1 - smoothstep(0.25, 0.5, weather.cloudCover)
   const dewAir = 1 - smoothstep(0.2, 0.5, weather.fog)
   const dawn = 1 - smoothstep(0.035, 0.13, circularDistance(dayPhase, 0.25, 1))
-  const stormEvent = getStormEvent(elapsed)
+  const stormEvent = getStormEvent(elapsed, { interval: stormInterval, distanceKm: stormDistanceKm })
 
   const effects = target ?? {
     pollen: 0,

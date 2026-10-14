@@ -9,6 +9,7 @@ export interface NatureClockConfig {
 export interface NatureSnapshot {
   elapsed: number
   dayPhase: number
+  dayCycle?: number
   seasonPhase: number
   seasonIndex: SeasonIndex
   nextSeasonIndex: SeasonIndex
@@ -50,7 +51,7 @@ export function sampleNatureClock(
 
   return {
     elapsed,
-    dayPhase,
+    dayPhase, dayCycle: elapsed / config.dayDuration,
     seasonPhase,
     seasonIndex,
     nextSeasonIndex,
@@ -58,4 +59,27 @@ export function sampleNatureClock(
     windStrength: Math.min(1, Math.max(0, broadWind * 0.65 + gust * 0.35)),
     weatherIntensity: smooth01(weather),
   }
+}
+
+/** Independent accumulated phases preserve scene position when durations change. */
+export interface NatureClockState { elapsed: number; dayCycle: number; seasonCycle: number; weatherElapsed: number }
+export function createNatureClockState(elapsed = DEFAULT_CLOCK.dayDuration * .31): NatureClockState {
+  return { elapsed, dayCycle: elapsed / DEFAULT_CLOCK.dayDuration, seasonCycle: elapsed / DEFAULT_CLOCK.seasonDuration, weatherElapsed: elapsed }
+}
+export function advanceNatureClock(state: NatureClockState, delta: number, options: { dayDuration: number; seasonDuration: number; timePaused: boolean; realTime: boolean; weatherChangeSpeed: number }, deviceDate = new Date()): NatureSnapshot {
+  const seconds = options.timePaused ? 0 : Math.max(0, delta)
+  state.elapsed += seconds
+  state.dayCycle += seconds / options.dayDuration
+  state.seasonCycle += seconds / options.seasonDuration
+  state.weatherElapsed += seconds * options.weatherChangeSpeed
+  const snapshot = sampleNatureClock(state.weatherElapsed)
+  snapshot.elapsed = state.elapsed
+  if (options.realTime && !options.timePaused) state.dayCycle = Math.floor(state.dayCycle) + (deviceDate.getHours() * 3600 + deviceDate.getMinutes() * 60 + deviceDate.getSeconds()) / 86400
+  snapshot.dayCycle = state.dayCycle
+  snapshot.dayPhase = fract(state.dayCycle)
+  snapshot.seasonPhase = fract(state.seasonCycle / 4)
+  snapshot.seasonIndex = (Math.floor(state.seasonCycle) % 4) as SeasonIndex
+  snapshot.nextSeasonIndex = ((snapshot.seasonIndex + 1) % 4) as SeasonIndex
+  snapshot.seasonBlend = smooth01(fract(state.seasonCycle))
+  return snapshot
 }

@@ -25,8 +25,11 @@ import { ShootingStars } from './ShootingStars'
 import { cloudFieldChunk } from './cloudShaders'
 import { useCloudNoise } from './cloudNoise'
 import { Lightning } from './Lightning'
+import { Aurora } from './Aurora'
 
 interface AtmosphereProps {
+  auroraPreviewUntil?: number
+  stormDistanceKm?: number
   sceneSettings: SceneSettings
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
@@ -79,6 +82,7 @@ const starVertexShader = /* glsl */ `
   attribute vec3 tint;
   uniform float uTime;
   uniform float uMotion;
+  uniform float uTwinkle;
   uniform float uCover;
   uniform vec2 uDrift;
   varying float vBrightness;
@@ -88,7 +92,7 @@ const starVertexShader = /* glsl */ `
   void main() {
     vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
     float frequency = 0.18 + fract(phase * 7.31) * 0.7;
-    float twinkle = 1.0 - (0.025 + fract(phase * 13.7) * 0.1) * (1.0 + sin(uTime * frequency * uMotion + phase));
+    float twinkle = 1.0 - uTwinkle * (0.025 + fract(phase * 13.7) * 0.1) * (1.0 + sin(uTime * frequency * uMotion + phase));
     vec3 direction = normalize(position - cameraPosition);
     float horizon = smoothstep(0.02, 0.3, direction.y);
     float transmission = 1.0 - cloudDensity(cloudSkyPoint(direction), uDrift, uCover) * 0.98;
@@ -150,7 +154,8 @@ function createStars(count: number) {
 }
 
 export function Atmosphere({
-  sceneSettings,
+  auroraPreviewUntil = 0,
+  sceneSettings, stormDistanceKm,
   quality,
   snapshotRef,
   atmosphereRef,
@@ -166,8 +171,8 @@ export function Atmosphere({
   const hemisphereRef = useRef<HemisphereLight>(null)
   const fogRef = useRef<FogExp2>(null)
   const starsGeometry = useMemo(
-    () => createStars(quality.starCount),
-    [quality.starCount],
+    () => createStars(Math.round(quality.starCount * sceneSettings.starDensity)),
+    [quality.starCount, sceneSettings.starDensity],
   )
   const starsMaterial = useMemo(
     () =>
@@ -179,7 +184,7 @@ export function Atmosphere({
           uColor: { value: new Color('#dbe7ec') },
           uOpacity: { value: 0 },
           uTime: { value: 0 },
-          uMotion: { value: 1 }, uCover: { value: 0 }, uDrift: { value: new Vector2() },
+          uTwinkle: {value: 1}, uMotion: { value: 1 }, uCover: { value: 0 }, uDrift: { value: new Vector2() },
         },
         transparent: true,
         depthWrite: false,
@@ -246,6 +251,7 @@ export function Atmosphere({
     skyMaterial.uniforms.uNightOpacity.value = quality.cloudLayers > 1 ? state.starOpacity * sceneSettings.starBrightness * (1 - snapshot.weather.cloudCover) : 0
     starsMaterial.uniforms.uOpacity.value = state.starOpacity * sceneSettings.starBrightness
     starsMaterial.uniforms.uTime.value = snapshot.autoElapsed
+    starsMaterial.uniforms.uTwinkle.value = sceneSettings.starTwinkle
     starsMaterial.uniforms.uMotion.value = reducedMotion ? .2 : 1
     starsMaterial.uniforms.uCover.value = snapshot.weather.cloudCover
     starsMaterial.uniforms.uDrift.value.set(...snapshot.weather.windDirection).normalize().multiplyScalar(state.cloudPhase)
@@ -292,6 +298,7 @@ export function Atmosphere({
       </mesh>
       <points geometry={starsGeometry} material={starsMaterial} frustumCulled={false} />
       <CelestialBodies
+        sceneSettings={sceneSettings}
         quality={quality}
         atmosphereRef={atmosphereRef}
         snapshotRef={snapshotRef}
@@ -299,20 +306,24 @@ export function Atmosphere({
         visible={visible}
       />
       <CloudLayer
+        sceneSettings={sceneSettings}
+        stormDistanceKm={stormDistanceKm}
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
         effectsRef={effectsRef}
         visible={visible}
       />
+      <Aurora sceneSettings={sceneSettings} quality={quality} snapshotRef={snapshotRef} atmosphereRef={atmosphereRef} visible={visible} reducedMotion={reducedMotion} previewUntil={auroraPreviewUntil} />
       {sceneSettings.shootingStars ? <ShootingStars
+        sceneSettings={sceneSettings}
         quality={quality}
         snapshotRef={snapshotRef}
         atmosphereRef={atmosphereRef}
         reducedMotion={reducedMotion}
         visible={visible}
       /> : null}
-      <Lightning snapshotRef={snapshotRef} effectsRef={effectsRef} quality={quality} visible={visible} />
+      <Lightning sceneSettings={sceneSettings} stormDistanceKm={stormDistanceKm} snapshotRef={snapshotRef} effectsRef={effectsRef} quality={quality} visible={visible} />
     </>
   )
 }

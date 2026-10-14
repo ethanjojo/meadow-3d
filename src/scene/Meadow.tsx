@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
@@ -46,6 +47,7 @@ import {
 } from './grassTextures'
 
 interface MeadowProps {
+  sceneSettings: SceneSettings
   flowerCount: number
   quality: QualityProfile
   snapshotRef: MutableRefObject<EnvironmentSnapshot>
@@ -125,6 +127,7 @@ function createBladeGeometry(
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
   geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2))
   geometry.setIndex(indices)
+  geometry.computeVertexNormals()
   geometry.setAttribute(
     'instanceOffset',
     new InstancedBufferAttribute(layout.offsets, 3),
@@ -195,7 +198,7 @@ function createGrassMaterial(
     side: DoubleSide,
     toneMapped: true,
     uniforms: {
-      uTime: { value: 0 },
+      uHeight: {value: 1}, uTime: { value: 0 },
       uWindStrength: { value: 0.5 },
       uWindDirection: { value: new Vector2(1, 0) },
       uGustOrigin: { value: GUST_ORIGIN.clone() },
@@ -233,7 +236,7 @@ function createGrassMaterial(
   })
 }
 
-export function Meadow({
+export function Meadow({ sceneSettings,
   flowerCount,
   quality,
   snapshotRef,
@@ -248,7 +251,7 @@ export function Meadow({
   const fallbackTextures = useMemo(createGrassTextureFallbacks, [])
   const textureLoader = useMemo(() => new TextureLoader(), [])
   const layers = useMemo(() => {
-    const budgets = getGrassLayerBudgets(quality.grassBlades)
+    const budgets = getGrassLayerBudgets(Math.round(quality.grassBlades * sceneSettings.grassDensity))
 
     const result = GRASS_LAYERS.map((layer) => ({
       ...layer,
@@ -267,7 +270,7 @@ export function Meadow({
     cloudNoise,
     fallbackTextures,
     quality.grassAtlas,
-    quality.grassBlades,
+    quality.grassBlades, sceneSettings.grassDensity,
     quality.grassTransmission,
   ])
   const groundGeometry = useMemo(createGroundGeometry, [])
@@ -343,12 +346,13 @@ export function Meadow({
     const effects = effectsRef.current
     const wetness = Math.max(snapshot.weather.wetness, effects.dew * 0.45)
     const windStrength = snapshot.weather.windStrength
-    const bendLimit = getGrassBendLimit(windStrength, reducedMotion)
+    const bendLimit = getGrassBendLimit(windStrength, reducedMotion) * sceneSettings.grassMotion
     const flutterStrength =
-      (reducedMotion ? 0.005 : 0.014) * (0.3 + windStrength * 0.7)
+      sceneSettings.grassMotion * (reducedMotion ? 0.005 : 0.014) * (0.3 + windStrength * 0.7)
 
     for (const layer of layers) {
       const { uniforms } = layer.material
+      uniforms.uHeight.value = sceneSettings.grassHeight
       uniforms.uTime.value = snapshot.elapsed
       uniforms.uWindStrength.value = windStrength
       uniforms.uWindDirection.value
@@ -372,7 +376,7 @@ export function Meadow({
 
     const shadowCover = snapshot.weather.cloudCover
     const shadowStrength =
-      Math.min(1, atmosphere.sunIntensity / 1.2) * shadowCover ** 0.85
+      Math.min(1, atmosphere.sunIntensity / 1.2) * shadowCover ** 0.85 * sceneSettings.cloudShadow
     for (const layer of layers) {
       layer.material.uniforms.uShadowCover.value = shadowCover
       layer.material.uniforms.uShadowStrength.value = shadowStrength
@@ -477,6 +481,7 @@ ${cloudShadowChunk}`,
         />
       ))}
       <Flowers
+        sceneSettings={sceneSettings}
         count={flowerCount}
         detailed={quality.flowerDetail}
         reducedMotion={reducedMotion}

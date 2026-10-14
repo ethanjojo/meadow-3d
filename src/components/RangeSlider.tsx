@@ -1,3 +1,4 @@
+import { settingTargetId } from '../core/settingsSearch'
 import { useId } from 'react'
 
 export function RangeSlider({ label, value, onChange, vertical = false }: {
@@ -6,7 +7,7 @@ export function RangeSlider({ label, value, onChange, vertical = false }: {
   const id = useId()
   const percent = Math.round(value * 100)
   return (
-    <div className={`range-slider${vertical ? ' range-slider-vertical' : ''}`}>
+    <div data-setting-id={settingTargetId(label)} className={`range-slider${vertical ? ' range-slider-vertical' : ''}`}>
       <div className="range-slider-label">
         <label htmlFor={id}>{label}</label>
         <output htmlFor={id}>{percent}%</output>

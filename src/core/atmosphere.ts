@@ -121,6 +121,7 @@ export function getAtmosphere(
   snapshot: EnvironmentSnapshot,
   season: SeasonAppearance,
   target?: AtmosphereState,
+  goldenWarmth = 1,
 ): AtmosphereState {
   const state = target ?? {
     celestial: getCelestialState(snapshot.dayPhase),
@@ -165,7 +166,7 @@ export function getAtmosphere(
   const goldenHour = smoothstep(-0.04, 0.1, sunElevation) *
     (1 - smoothstep(0.25, 0.62, sunElevation)) *
     (1 - snapshot.weather.cloudCover * 0.85) * fogTransmission *
-    (1 - snapshot.weather.storm * 0.65)
+    (1 - snapshot.weather.storm * 0.65) * goldenWarmth
   const starOpacity =
     (1 - smoothstep(-0.28, 0.04, sunElevation)) *
     cloudTransmission *
@@ -185,7 +186,7 @@ export function getAtmosphere(
     .copy(NIGHT_HORIZON)
     .lerp(DAY_HORIZON, daylight)
     .lerp(SUNSET, twilight * (1 - Math.abs(daylight - 0.5) * 1.5) * 0.34)
-    .lerp(GOLDEN_HORIZON, goldenHour * 0.88)
+    .lerp(GOLDEN_HORIZON, Math.min(1, goldenHour * 0.88))
   const skyDesaturation = clamp(
     snapshot.weather.cloudCover * 0.18 +
       snapshot.weather.fog * 0.22 +
@@ -196,7 +197,7 @@ export function getAtmosphere(
   state.skyTop.lerp(WEATHER_SKY, skyDesaturation)
   state.skyHorizon.lerp(WEATHER_HORIZON, skyDesaturation * 0.72)
   state.fogColor.copy(state.skyHorizon).lerp(season.groundColor, 0.14)
-  state.sunColor.copy(DAY_SUN).lerp(LOW_SUN, goldenHour)
+  state.sunColor.copy(DAY_SUN).lerp(LOW_SUN, Math.min(1, goldenHour))
   state.moonColor.copy(MOON_LIGHT)
   state.skyLightColor
     .copy(NIGHT_SKY_LIGHT)

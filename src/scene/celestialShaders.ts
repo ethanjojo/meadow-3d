@@ -35,7 +35,7 @@ export const sunFragmentShader = /* glsl */ `
 `
 
 export const moonFragmentShader = /* glsl */ `
-  uniform float uOpacity, uPhase;
+  uniform float uOpacity, uPhase, uBrightness, uEarthshine;
   varying vec2 vUv;
 
   float mare(vec2 p, vec2 center, vec2 radius) {
@@ -74,10 +74,10 @@ export const moonFragmentShader = /* glsl */ `
     float diffuse = .83 + .17 * sqrt(max(0.0,incidence));
     // Earthshine reveals the unlit surface in cool gray-blue, especially at crescent phases.
     float earthshine = .065 + .045 * (1.0 - cos(uPhase)) * .5;
-    vec3 shadowLight = vec3(.55,.64,.76) * earthshine;
+    vec3 shadowLight = vec3(.55,.64,.76) * earthshine * uEarthshine;
     vec3 sunLight = vec3(.82,.815,.79) * (diffuse + .018);
     vec3 color = mix(shadowLight, sunLight, illuminated) * albedo * (.88 + z * .12);
-    gl_FragColor = vec4(color,uOpacity * (1.0 - smoothstep(.98,1.0,sqrt(r2))));
+    gl_FragColor = vec4(color * uBrightness,uOpacity * (1.0 - smoothstep(.98,1.0,sqrt(r2))));
     #include <colorspace_fragment>
   }
 `

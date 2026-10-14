@@ -6,6 +6,7 @@ export const QUALITY_PROFILES = {
     maxDpr: 1,
     postprocessing: false,
     cloudLayers: 1,
+    auroraLayers: 1,
     starCount: 700,
     shootingStarPool: 1,
     grassAtlas: false,
@@ -23,6 +24,7 @@ export const QUALITY_PROFILES = {
     maxDpr: 1.5,
     postprocessing: true,
     cloudLayers: 2,
+    auroraLayers: 2,
     starCount: 1_300,
     shootingStarPool: 2,
     grassAtlas: true,
@@ -40,6 +42,7 @@ export const QUALITY_PROFILES = {
     maxDpr: 2,
     postprocessing: true,
     cloudLayers: 3,
+    auroraLayers: 3,
     starCount: 2_000,
     shootingStarPool: 3,
     grassAtlas: true,
@@ -53,7 +56,9 @@ export const QUALITY_PROFILES = {
 } as const
 
 export type QualityTier = keyof typeof QUALITY_PROFILES
-export type QualityProfile = (typeof QUALITY_PROFILES)[QualityTier]
+export type QualityProfile = {
+  readonly [K in keyof (typeof QUALITY_PROFILES)['high']]: (typeof QUALITY_PROFILES)['high'][K] extends boolean ? boolean : number
+}
 
 export interface DeviceCapabilities {
   logicalCores: number

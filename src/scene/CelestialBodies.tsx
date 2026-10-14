@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import {
@@ -21,6 +22,7 @@ import { getCelestialAppearance } from '../core/celestialAppearance'
 import { celestialVertexShader, haloFragmentShader, sunFragmentShader, moonFragmentShader } from './celestialShaders'
 
 interface CelestialBodiesProps {
+  sceneSettings: SceneSettings
   quality: QualityProfile
   atmosphereRef: MutableRefObject<AtmosphereState>
   celestialPresentationRef: MutableRefObject<CelestialPresentation>
@@ -64,7 +66,7 @@ function placeBody(
   }
 }
 
-export function CelestialBodies({
+export function CelestialBodies({ sceneSettings,
   quality,
   atmosphereRef,
   celestialPresentationRef,
@@ -76,7 +78,7 @@ export function CelestialBodies({
   const moonDiscRef = useRef<Mesh>(null)
   const moonHaloRef = useRef<Mesh>(null)
   const position = useMemo(() => new Vector3(), [])
-  const bloomEnabled = quality.postprocessing
+  const bloomEnabled = quality.postprocessing && quality.bloomStrength > 0
   const materials = useMemo(
     () => ({
       sunDisc: new ShaderMaterial({
@@ -96,7 +98,7 @@ export function CelestialBodies({
       ),
       moonDisc: new ShaderMaterial({
         vertexShader: celestialVertexShader, fragmentShader: moonFragmentShader,
-        uniforms: { uOpacity: { value: 0 }, uPhase: { value: .25 } },
+        uniforms: { uBrightness: { value: 1 }, uEarthshine: { value: 1 }, uOpacity: { value: 0 }, uPhase: { value: .25 } },
         transparent: true, depthTest: true, depthWrite: false, toneMapped: false,
       }),
       moonHalo: createHaloMaterial(
@@ -144,7 +146,9 @@ export function CelestialBodies({
     materials.sunDisc.uniforms.uWarmth.value = appearance.sunWarmth
     materials.sunHalo.uniforms.uOpacity.value =
       presentation.sun.opacity * atmosphere.sunHalo * 0.48
-    materials.moonDisc.uniforms.uPhase.value = appearance.moonPhase
+    materials.moonDisc.uniforms.uPhase.value = sceneSettings.moonPhaseMode === 'fixed' ? sceneSettings.moonPhase * Math.PI * 2 : appearance.moonPhase
+    materials.moonDisc.uniforms.uBrightness.value = sceneSettings.moonBrightness
+    materials.moonDisc.uniforms.uEarthshine.value = sceneSettings.moonEarthshine
     materials.moonDisc.uniforms.uOpacity.value =
       presentation.moon.opacity * atmosphere.moonVisibility
     materials.moonHalo.uniforms.uOpacity.value =

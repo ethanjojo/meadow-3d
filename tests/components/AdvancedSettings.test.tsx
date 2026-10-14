@@ -1,0 +1,128 @@
+import { useState } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { AdvancedSettings } from '../../src/components/AdvancedSettings'
+import { DEFAULT_AUDIO_SETTINGS, parseAudioSettings } from '../../src/core/audioSettings'
+import { DEFAULT_SCENE_SETTINGS, parseSceneSettings } from '../../src/core/sceneSettings'
+import { DEFAULT_SIMULATION_SETTINGS } from '../../src/core/simulation'
+import { PreferencesTools } from '../../src/components/PreferencesTools'
+function Harness() {
+ const [scene, setScene] = useState(() => parseSceneSettings(DEFAULT_SCENE_SETTINGS)), [audio, setAudio] = useState(() => parseAudioSettings(DEFAULT_AUDIO_SETTINGS))
+ return <><output data-testid="scene">{JSON.stringify(scene)}</output><output data-testid="audio">{JSON.stringify(audio)}</output><AdvancedSettings open sceneSettings={scene} onSceneChange={setScene} value={audio} enabled onChange={next => setAudio(parseAudioSettings(next))} onSoundChange={vi.fn()} onMasterVolumeChange={vi.fn()} preview={null} onPreview={vi.fn()} onStopPreview={vi.fn()} onClose={vi.fn()} preferencesTools={<PreferencesTools value={{ scene, audio, simulation: DEFAULT_SIMULATION_SETTINGS }} onApply={next => { setScene(next.scene); setAudio(next.audio) }} />} /></>
+}
+function expand(text: string) { fireEvent.click(screen.getByText(text, { selector: 'summary' })) }
+describe('Advanced settings', () => {
+ it('navigates six tabs by keyboard and searches all sections without hiding results', () => {
+  render(<Harness />)
+  expect(screen.getAllByRole('tab')).toHaveLength(6)
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Sound' }), { key: 'End' })
+  expect(screen.getByRole('tab', { name: 'Presets' })).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Presets' }), { key: 'ArrowRight' })
+  expect(screen.getByRole('tab', { name: 'Sound' })).toHaveFocus()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: 'lights' } })
+  fireEvent.click(screen.getByRole('option', { name: /^Farm lights,/ }))
+  expect(screen.getByRole('switch', { name: 'Farm lights' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Reset farm' })).toBeEnabled()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: 'Fireflies from' } })
+  fireEvent.click(screen.getByRole('option', { name: /^Fireflies from,/ }))
+  expect(screen.getByRole('combobox', { name: 'Firefly activity' })).toBeVisible()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: 'nonexistent-setting' } })
+  expect(screen.getByText('No settings found. Try a different name.')).toBeVisible()
+  fireEvent.click(screen.getByRole('tab', { name: 'Nature' }))
+  expect(screen.getByRole('combobox', { name: 'Search all settings' })).toHaveValue('')
+ })
+ it('shows preset tools only in their tab and keeps the form keyboard accessible', () => {
+  render(<Harness />)
+  expect(screen.queryByRole('button', { name: 'Export settings' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('tab', { name: 'Nature' }))
+  expect(screen.queryByLabelText('Preset name')).not.toBeInTheDocument()
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Nature' }), { key: 'End' })
+  expect(screen.getByRole('tab', { name: 'Presets' })).toHaveFocus()
+  const panel = screen.getByRole('tabpanel', { name: 'Presets' })
+  expect(within(panel).getAllByLabelText('Preset name')).toHaveLength(1)
+  expect(within(panel).getByRole('button', { name: 'Save preset' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: /^Reset/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Mute sound' })).not.toBeInTheDocument()
+  const importButton = within(panel).getByRole('button', { name: 'Import settings' })
+  importButton.focus()
+  fireEvent.keyDown(importButton, { key: 'Tab' })
+  expect(screen.getByRole('button', { name: 'Search settings' })).toHaveFocus()
+ })
+ it.each(['preset', 'export', 'import'])('finds one complete Presets region for %s', query => {
+  render(<Harness />)
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: query } })
+  fireEvent.click(screen.getByRole('option', { name: query === 'preset' ? /^Preset name,/ : query === 'export' ? /^Export settings,/ : /^Import settings,/ }))
+  const regions = screen.getAllByRole('tabpanel', { name: 'Presets' })
+  expect(regions).toHaveLength(1)
+  expect(within(regions[0]).getByLabelText('Preset name')).toBeVisible()
+  expect(screen.getAllByRole('button', { name: 'Export settings' })).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Import settings' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: /^Reset/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Mute sound' })).not.toBeInTheDocument()
+ })
+ it.each([['simultaneous', /Simultaneous animal calls/], ['minimum gap', /Minimum gap between calls/], ['Blackbird minimum interval', /Blackbird minimum interval/]])('finds the visible sound label %s', (query, label) => {
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Nature' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: query } })
+  fireEvent.click(screen.getByRole('option', { name: query === 'simultaneous' ? /^Simultaneous animal calls,/ : query === 'minimum gap' ? /^Minimum gap between calls,/ : /^Blackbird minimum interval,/ }))
+  expect(screen.getByRole('tabpanel', { name: 'Sound' })).toBeVisible()
+  expect(screen.getByRole('spinbutton', { name: label })).toBeVisible()
+ })
+ it('keeps custom farm hours disabled until selected, supports midnight and resets only Farm', () => {
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Nature' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Full bloom' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Farm' }))
+  expand('Window lights')
+  expect(screen.getByLabelText(/Lights on at/)).toBeDisabled()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Window light schedule' }), { target: { value: 'custom' } })
+  fireEvent.change(screen.getByLabelText(/Lights on at/), { target: { value: '22:15' } })
+  fireEvent.change(screen.getByLabelText(/Lights off at/), { target: { value: '02:30' } })
+  expect(JSON.parse(screen.getByTestId('scene').textContent!)).toMatchObject({ farmLightStart: 22.25, farmLightEnd: 2.5 })
+  fireEvent.click(screen.getByRole('button', { name: 'Reset farm' }))
+  expect(JSON.parse(screen.getByTestId('scene').textContent!)).toMatchObject({ farmLightMode: 'auto', farmLightStart: 18.5, flowerDensity: .75 })
+ })
+ it('edits animal scheduling independently and keeps interval bounds ordered', () => {
+  render(<Harness />)
+  expand('Farm animals')
+  expand('Cat timing & placement')
+  const call = screen.getByText('Cat timing & placement', { selector: 'summary' }).parentElement!
+  expect(within(call).getByLabelText(/Cat from/)).toBeDisabled()
+  fireEvent.change(within(call).getByRole('combobox', { name: 'Cat activity' }), { target: { value: 'custom' } })
+  fireEvent.change(within(call).getByLabelText(/Cat from/), { target: { value: '20:00' } })
+  fireEvent.change(within(call).getByRole('spinbutton', { name: /Cat minimum interval/ }), { target: { value: '1000' } })
+  fireEvent.change(within(call).getByRole('combobox', { name: 'Cat distance' }), { target: { value: 'near' } })
+  const audio = JSON.parse(screen.getByTestId('audio').textContent!)
+  expect(audio.calls.cat).toMatchObject({ activity: 'custom', startHour: 20, minInterval: 1000, maxInterval: 1000, distance: 'near' })
+  expect(audio.calls.dog).toEqual(DEFAULT_AUDIO_SETTINGS.calls.dog)
+  fireEvent.click(within(call).getByRole('switch', { name: 'Cat enabled' }))
+  expect(within(call).getByRole('combobox', { name: 'Cat activity' })).toBeDisabled()
+ })
+ it('accepts registry fractional steps and includes weather choices in search', () => {
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Time & performance' }))
+  const duration = screen.getByRole('spinbutton', { name: /Transition duration/ }) as HTMLInputElement
+  expect(duration).toHaveAttribute('step', '0.5')
+  fireEvent.change(duration, { target: { value: '0.5' } })
+  expect(duration.checkValidity()).toBe(true)
+  expect(JSON.parse(screen.getByTestId('scene').textContent!).transitionDuration).toBe(.5)
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search all settings' }), { target: { value: 'rain' } })
+  fireEvent.click(screen.getByRole('option', { name: /^Rain, Time/ }))
+  expect(screen.getByRole('switch', { name: 'Rain' })).toBeVisible()
+ })
+ it('keeps switch labels separate from their descriptions', () => {
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Nature' }))
+  expand('Wind & motion')
+  const toggle = screen.getByRole('switch', { name: 'Gentler motion' })
+  expect(toggle).toHaveAccessibleName('Gentler motion')
+  expect(toggle).toHaveAccessibleDescription('System reduced motion always takes priority.')
+ })
+ it('requires one allowed automatic weather mode', () => {
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Time & performance' }))
+  expand('Allowed automatic weather')
+  for (const name of ['Cloudy', 'Fog', 'Rain', 'Storm', 'Snow']) fireEvent.click(screen.getByRole('switch', { name }))
+  expect(screen.getByRole('switch', { name: 'Clear' })).toBeDisabled()
+ })
+})

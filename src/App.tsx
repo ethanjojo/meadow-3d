@@ -6,7 +6,10 @@ import { SceneErrorBoundary } from './components/SceneErrorBoundary'
 import { EnvironmentSettings } from './components/EnvironmentSettings'
 import { SoundToggle } from './components/SoundToggle'
 import { StaticFallback } from './components/StaticFallback'
-import { QUALITY_PROFILES } from './core/quality'
+import { FrameScheduler } from './components/FrameScheduler'
+import { PreferencesTools } from './components/PreferencesTools'
+import type { MeadowPreferences } from './core/preferences'
+import { resolveRenderPreferences } from './core/renderPreferences'
 import { parseSceneSettings, type SceneSettings } from './core/sceneSettings'
 import { parseAudioSettings, type AudioChannelId, type AudioPreviewState, type AudioSettings } from './core/audioSettings'
 import {
@@ -61,9 +64,20 @@ export function App() {
     try { return parseSceneSettings(JSON.parse(localStorage.getItem(SCENE_STORAGE_KEY) ?? 'null')) }
     catch { return parseSceneSettings(null) }
   })
+  const sceneSettingsRef = useRef(sceneSettings)
+  const [auroraPreviewUntil, setAuroraPreviewUntil] = useState(0)
+  useEffect(() => {
+    if (!auroraPreviewUntil) return
+    const timer = setTimeout(() => setAuroraPreviewUntil(0), Math.max(0, auroraPreviewUntil - Date.now()))
+    return () => clearTimeout(timer)
+  }, [auroraPreviewUntil])
+  const handleAuroraPreview = () => setAuroraPreviewUntil(current => current > Date.now() ? 0 : Date.now() + 45_000)
+  sceneSettingsRef.current = sceneSettings
   const handleSceneChange = useCallback((value: SceneSettings) => {
     const next = parseSceneSettings(value)
     setSceneSettings(next)
+    sceneSettingsRef.current = next
+    audioRef.current?.setSceneSettings?.(next)
     try { localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(next)) }
     catch { /* Settings still apply when storage is unavailable. */ }
   }, [])
@@ -100,8 +114,17 @@ export function App() {
     }),
     [reducedMotion],
   )
-  const { tier: qualityTier, recordFrame } = useAdaptiveQuality(capabilities)
-  const quality = QUALITY_PROFILES[qualityTier]
+  const { tier: automaticQuality, recordFrame } = useAdaptiveQuality(capabilities)
+  const rendering = useMemo(() => resolveRenderPreferences(sceneSettings, automaticQuality), [sceneSettings, automaticQuality])
+  const qualityTier = rendering.tier
+  const quality = rendering.profile
+  const getAudioController = useCallback(() => {
+    if (!audioRef.current) {
+      audioRef.current = createAmbientAudio(audioSettingsRef.current)
+      audioRef.current.setSceneSettings?.(sceneSettingsRef.current)
+    }
+    return audioRef.current
+  }, [])
 
   const handleAudioChange = useCallback((value: AudioSettings) => {
     const next = parseAudioSettings(value)
@@ -130,8 +153,7 @@ export function App() {
       return
     }
     if (audioSettingsRef.current.master === 0) handleAudioChange({ ...audioSettingsRef.current, master: lastAudibleVolumeRef.current })
-    const controller = audioRef.current ?? createAmbientAudio(audioSettingsRef.current)
-    audioRef.current = controller
+    const controller = getAudioController()
     const started = await controller.start()
     if (revision !== soundRevisionRef.current) {
       if (!soundIntentRef.current) await controller.suspend()
@@ -139,7 +161,7 @@ export function App() {
     }
     soundIntentRef.current = started
     setSoundEnabled(started)
-  }, [handleAudioChange, handleStopPreview])
+  }, [handleAudioChange, handleStopPreview, getAudioController])
 
   const handleMasterVolumeChange = useCallback((master: number) => {
     handleAudioChange({ ...audioSettingsRef.current, master })
@@ -152,8 +174,7 @@ export function App() {
     const request = ++previewRequestRef.current
     previewIdRef.current = id
     setPreview({ id, status: 'loading' })
-    const controller = audioRef.current ?? createAmbientAudio(audioSettingsRef.current)
-    audioRef.current = controller
+    const controller = getAudioController()
     const started = await controller.preview(id, () => {
       if (request !== previewRequestRef.current) return
       previewIdRef.current = null
@@ -162,7 +183,7 @@ export function App() {
     if (request !== previewRequestRef.current) return
     setPreview({ id, status: started ? 'playing' : 'error' })
     if (!started) previewIdRef.current = null
-  }, [handleStopPreview])
+  }, [handleStopPreview, getAudioController])
 
   const handleNatureSample = useCallback(
     (frame: EnvironmentTransitionFrame) => {
@@ -202,6 +223,14 @@ export function App() {
     [],
   )
 
+  const handlePreferencesApply = useCallback((next: MeadowPreferences) => {
+    handleStopPreview()
+    handleSceneChange(next.scene)
+    handleAudioChange(next.audio)
+    handleSimulationSettingsChange(next.simulation)
+    if (next.audio.master === 0) void handleSoundChange(false)
+  }, [handleStopPreview, handleSceneChange, handleAudioChange, handleSimulationSettingsChange, handleSoundChange])
+
   const fallback = <StaticFallback />
 
   return (
@@ -215,10 +244,12 @@ export function App() {
       data-transition-progress={visibleFrame?.progress ?? 1}
       data-auto-elapsed={visibleFrame?.snapshot.autoElapsed ?? 0}
       data-transition-revision={visibleFrame?.revision ?? 0}
+      data-quality={qualityTier}
     >
       {webglAvailable ? (
         <SceneErrorBoundary fallback={fallback}>
           <Canvas
+            frameloop={!visible ? 'never' : rendering.fps > 0 ? 'demand' : 'always'}
             data-testid="nature-canvas"
             camera={{ position: [0, 1.08, 5.4], fov: 46, near: 0.1, far: 180 }}
             dpr={[1, quality.maxDpr]}
@@ -231,13 +262,17 @@ export function App() {
               toneMapping: ACESFilmicToneMapping,
             }}
           >
+            {rendering.fps > 0 ? <FrameScheduler fps={rendering.fps} visible={visible} /> : null}
             <Suspense fallback={null}>
               <NatureScene
+                auroraPreviewUntil={auroraPreviewUntil}
                 sceneSettings={sceneSettings}
                 qualityTier={qualityTier}
+                qualityProfile={quality}
+                stormDistanceKm={audioSettings.thunderDistance}
                 reducedMotion={reducedMotion}
                 visible={visible}
-                recordFrame={recordFrame}
+                recordFrame={sceneSettings.quality === 'auto' && !sceneSettings.powerSaving && rendering.fps === 0 ? recordFrame : undefined}
                 onNatureSample={handleNatureSample}
                 simulationSettings={simulationSettings}
               />
@@ -250,6 +285,9 @@ export function App() {
       {webglAvailable ? (
         <div className="experience-controls">
           <EnvironmentSettings
+            auroraPreviewActive={auroraPreviewUntil > 0}
+            onAuroraPreview={handleAuroraPreview}
+            preferencesTools={<PreferencesTools value={{ scene: sceneSettings, audio: audioSettings, simulation: simulationSettings }} onApply={handlePreferencesApply} />}
             sceneSettings={sceneSettings}
             onSceneChange={handleSceneChange}
             value={simulationSettings}

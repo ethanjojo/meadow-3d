@@ -1,3 +1,4 @@
+import type { SceneSettings } from '../core/sceneSettings'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { BoxGeometry, BufferGeometry, ExtrudeGeometry, MeshStandardMaterial, Shape } from 'three'
@@ -89,7 +90,7 @@ function buildFarm() {
   })
 }
 
-export function Farm({ lightsEnabled, atmosphereRef, snapshotRef, effectsRef }: { lightsEnabled: boolean; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects> }) {
+export function Farm({ sceneSettings, lightsEnabled, atmosphereRef, snapshotRef, effectsRef }: { sceneSettings: SceneSettings; lightsEnabled: boolean; atmosphereRef: MutableRefObject<AtmosphereState>; snapshotRef: MutableRefObject<EnvironmentSnapshot>; effectsRef: MutableRefObject<WeatherEffects> }) {
   const meshes = useMemo(buildFarm, [])
   const materials = useRef<(MeshStandardMaterial | null)[]>([])
   const snowUniform = useMemo(() => ({ value: 0 }), [])
@@ -107,7 +108,7 @@ export function Farm({ lightsEnabled, atmosphereRef, snapshotRef, effectsRef }: 
   })
   return (
     <group name="farm-barn" position={[FARM.x, terrainHeight(FARM.x, FARM.z) - 0.04, FARM.z]} rotation-y={FARM.rotation} scale={FARM.scale}>
-      <FarmWindows snapshotRef={snapshotRef} enabled={lightsEnabled} />
+      <FarmWindows sceneSettings={sceneSettings} snapshotRef={snapshotRef} enabled={lightsEnabled} />
       {meshes.map(({ surface, geometry }, index) => (
         <mesh key={surface} geometry={geometry} castShadow receiveShadow>
           <meshStandardMaterial ref={material => { materials.current[index] = material }} color={COLORS[surface]} emissive={COLORS[surface]} emissiveIntensity={0.25} roughness={surface === 'roof' ? 0.63 : 0.92}
